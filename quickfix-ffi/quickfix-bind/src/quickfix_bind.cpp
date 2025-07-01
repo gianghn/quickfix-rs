@@ -1114,6 +1114,21 @@ int8_t FixSession_logon(FixSession_t *session) {
     return 0;
   });
 }
+int8_t FixSession_setNextSenderMsgSeqNum(FixSession_t *session, int32_t num) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({
+    session->setNextSenderMsgSeqNum(num);
+    return 0;
+  });
+}
+int8_t FixSession_setNextTargetMsgSeqNum(FixSession_t *session, int32_t num) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({
+    session->setNextTargetMsgSeqNum(num);
+    return 0;
+  });
+}
 
 } // namespace FIX
+// namespace FIX
 } // extern C
