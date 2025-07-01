@@ -470,4 +470,8 @@ extern "C" {
     pub fn FixSession_setNextSenderMsgSeqNum(session: FixSession_t, num: i32) -> i8;
     #[must_use]
     pub fn FixSession_setNextTargetMsgSeqNum(session: FixSession_t, num: i32) -> i8;
+    #[must_use]
+    pub fn FixSession_getExpectedTargetNum(session: FixSession_t) -> i32;
+    #[must_use]
+    pub fn FixSession_getExpectedSenderNum(session: FixSession_t) -> i32;
 }

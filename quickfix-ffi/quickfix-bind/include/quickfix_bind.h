@@ -226,6 +226,8 @@ int8_t FixSession_isLoggedOn(FixSession_t *session);
 int8_t FixSession_send(FixSession_t *session, FixMessage_t *msg);
 int8_t FixSession_setNextSenderMsgSeqNum(FixSession_t *session, int32_t num);
 int8_t FixSession_setNextTargetMsgSeqNum(FixSession_t *session, int32_t num);
+int32_t FixSession_getExpectedTargetNum(FixSession_t *session);
+int32_t FixSession_getExpectedSenderNum(FixSession_t *session);
 
 #ifdef __cplusplus
 }

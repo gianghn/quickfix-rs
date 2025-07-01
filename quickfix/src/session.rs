@@ -78,6 +78,14 @@ impl Session<'_> {
     pub fn set_next_target_msg_seq_num(&mut self, num: i32) -> Result<(), QuickFixError> {
         ffi_code_to_result(unsafe { FixSession_setNextTargetMsgSeqNum(self.inner, num) })
     }
+    /// Get expected target message sequence number.
+    pub fn get_expected_target_num(&self) -> i32 {
+        unsafe { quickfix_ffi::FixSession_getExpectedTargetNum(self.inner) }
+    }
+    /// Get expected sender message sequence number.
+    pub fn get_expected_sender_num(&self) -> i32 {
+        unsafe { quickfix_ffi::FixSession_getExpectedSenderNum(self.inner) }
+    }
 }
 
 impl fmt::Debug for Session<'_> {

@@ -85,3 +85,63 @@ fn test_session_login_logout() -> Result<(), QuickFixError> {
 
     Ok(())
 }
+
+#[test]
+fn test_session_set_next_sender_target_msg_seq_num() -> Result<(), QuickFixError> {
+    let sender = FixRecorder::new(ServerType::Sender.session_id());
+    let receiver = FixRecorder::new(ServerType::Receiver.session_id());
+
+    // Init settings with same server port.
+    let communication_port = find_available_port();
+    let settings_sender = build_settings(ServerType::Sender, communication_port)?;
+    let settings_receiver = build_settings(ServerType::Receiver, communication_port)?;
+
+    let log_factory = LogFactory::try_new(&StdLogger::Stdout)?;
+
+    let app_sender = Application::try_new(&sender)?;
+    let app_receiver = Application::try_new(&receiver)?;
+
+    let message_store_factory_sender = MemoryMessageStoreFactory::new();
+    let message_store_factory_receiver = MemoryMessageStoreFactory::new();
+
+    // Init socket acceptor / initiator.
+    let mut socket_sender = Initiator::try_new(
+        &settings_sender,
+        &app_sender,
+        &message_store_factory_sender,
+        &log_factory,
+        FixSocketServerKind::default(),
+    )?;
+    let mut socket_receiver = Acceptor::try_new(
+        &settings_receiver,
+        &app_receiver,
+        &message_store_factory_receiver,
+        &log_factory,
+        FixSocketServerKind::default(),
+    )?;
+
+    // Start the app
+    socket_receiver.start()?;
+    socket_sender.start()?;
+
+    // Wait for login completion
+    while !sender.is_logged_in() && !receiver.is_logged_in() {
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    // Lookup session
+    let mut session = unsafe { Session::lookup(&ServerType::Sender.session_id()) }.unwrap();
+
+    // check if set next sender/target message sequence number works
+    let next_sender_seq_num = 100;
+    let next_target_seq_num = 200;
+    session.set_next_sender_msg_seq_num(next_sender_seq_num)?;
+    session.set_next_target_msg_seq_num(next_target_seq_num)?;
+    assert_eq!(session.get_expected_sender_num(), next_sender_seq_num);
+    assert_eq!(session.get_expected_target_num(), next_target_seq_num);
+    // Stop everything
+    socket_receiver.stop()?;
+    socket_sender.stop()?;
+
+    Ok(())
+}

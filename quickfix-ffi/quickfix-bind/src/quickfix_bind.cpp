@@ -1128,7 +1128,15 @@ int8_t FixSession_setNextTargetMsgSeqNum(FixSession_t *session, int32_t num) {
     return 0;
   });
 }
+int32_t FixSession_getExpectedSenderNum(FixSession_t *session) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({ return session->getExpectedSenderNum(); });
+}
 
+int32_t FixSession_getExpectedTargetNum(FixSession_t *session) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({ return session->getExpectedTargetNum(); });
+}
 } // namespace FIX
 // namespace FIX
 } // extern C
