@@ -33,6 +33,11 @@ impl Message {
             .ok_or_else(QuickFixError::from_last_error)
     }
 
+    /// Return a raw FIX message pointer.
+    pub fn get_fix_message_t(&self) -> FixMessage_t {
+        self.0
+    }
+
     /// Try reading underlying struct buffer as a FIX string.
     ///
     /// # Performances
