@@ -38,6 +38,11 @@ impl Message {
         self.0
     }
 
+    /// Return a message from a raw FIX message pointer
+    pub fn from_fix_message_t(fix_message_t: FixMessage_t) -> Result<Self, QuickFixError> {
+        Ok(Self(fix_message_t))
+    }
+
     /// Try reading underlying struct buffer as a FIX string.
     ///
     /// # Performances
