@@ -80,6 +80,31 @@ impl Message {
         }
     }
 
+    /// Read underlying struct buffer as raw FIX bytes, without the trailing NUL.
+    ///
+    /// Same C++ calls as [`Self::to_fix_string`], but the bytes are returned as they are:
+    /// no NUL scan, no UTF-8 check, no second copy. For callers that keep the message as bytes.
+    pub fn to_fix_bytes(&self) -> Result<Vec<u8>, QuickFixError> {
+        unsafe {
+            let buffer_len = FixMessage_getStringLen(self.0)
+                .try_into()
+                .map_err(|_err| QuickFixError::from_last_error())?;
+
+            let mut buffer = vec![0_u8; buffer_len as usize];
+            ffi_code_to_result(FixMessage_readString(
+                self.0,
+                buffer.as_mut_ptr().cast(),
+                buffer_len,
+            ))?;
+
+            // The C++ side writes a NUL-terminated string.
+            if buffer.last() == Some(&0) {
+                buffer.pop();
+            }
+            Ok(buffer)
+        }
+    }
+
     /// Clone struct header part.
     ///
     /// # Panic

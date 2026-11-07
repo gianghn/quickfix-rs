@@ -10,6 +10,18 @@ fn test_read_empy_message() {
 }
 
 #[test]
+fn test_to_fix_bytes() {
+    let msg = Message::new();
+    assert_eq!(msg.to_fix_bytes().as_deref(), Ok(&b"9=0\x0110=167\x01"[..]));
+
+    let msg = Message::try_from_text("42=foo\u{1}56=bar\u{1}").unwrap();
+    assert_eq!(
+        msg.to_fix_bytes().unwrap(),
+        msg.to_fix_string().unwrap().into_bytes()
+    );
+}
+
+#[test]
 fn test_from_text() {
     // Check with invalid C string
     {
