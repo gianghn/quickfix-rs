@@ -1,0 +1,50 @@
+# KRX fork CI for thread-mod, the branch the KRX gateway vendors. Upstream's ci.yml and
+# coverage.yml stay on main. libquickfix is our fork gianghn/quickfix (krx/fd-double-close);
+# see KRX_FORK_NOTES.md there.
+name: KRX fork CI
+on:
+  push:
+    branches: [thread-mod]
+  pull_request:
+    branches: [thread-mod]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # One test at a time: quickfix/tests/test_session.rs's tests share QuickFIX's session
+      # registry and crash in parallel, on upstream libquickfix too. Back to parallel once item 1
+      # of "Next work" in libquickfix's KRX_FORK_NOTES.md is done.
+      - name: Tests
+        run: cargo test --workspace -- --test-threads=1
+      - name: Tests with the features the gateway uses
+        run: cargo test --workspace --features quickfix/experimental-multi-thread-support -- --test-threads=1
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
