@@ -1,17 +1,18 @@
 [package]
 name = "quickfix-msgkrx"
-version = "0.1.6"
+version = "0.2.2"
 authors = ["Arthur LE MOIGNE"]
 edition = "2021"
-description = "FIX 4.4 messages generated from official XML spec file"
-repository = "https://github.com/arthurlm/quickfix-rs"
+description = "FIX 4.4 messages for the KRX (HOSE/HNX) dictionary, generated from FIX44KRX.xml"
+repository = "https://github.com/gianghn/quickfix-rs"
 license = "MIT OR Apache-1.1"
 keywords = ["quickfix", "fix-protocol", "finance", "auto-generated"]
 categories = ["encoding"]
-rust-version = "1.70.0"
+rust-version = "1.86.0"
+publish = false
 
 [dependencies]
-quickfix = { path = "../quickfix", version = "0.1.0" }
+quickfix = { path = "../quickfix", version = "0.2.2" }
 
 [build-dependencies]
-quickfix-msg-gen = { path = "../quickfix-msg-gen", version = "0.1.0" }
+quickfix-msg-gen = { path = "../quickfix-msg-gen", version = "0.2.2" }
