@@ -7,6 +7,11 @@ mod utils;
 
 #[test]
 fn test_session_login_logout() -> Result<(), QuickFixError> {
+    // Both tests register the same session IDs in QuickFIX's process-wide registry.
+    let _lock = utils::checker::GLOBAL_LOCK
+        .lock()
+        .expect("GLOBAL_LOCK poisoned");
+
     let sender = FixRecorder::new(ServerType::Sender.session_id());
     let receiver = FixRecorder::new(ServerType::Receiver.session_id());
 
@@ -52,7 +57,7 @@ fn test_session_login_logout() -> Result<(), QuickFixError> {
     socket_sender.start()?;
 
     // Wait for login completion
-    while !sender.is_logged_in() && !receiver.is_logged_in() {
+    while !(sender.is_logged_in() && receiver.is_logged_in()) {
         thread::sleep(Duration::from_millis(50));
     }
 
@@ -88,6 +93,11 @@ fn test_session_login_logout() -> Result<(), QuickFixError> {
 
 #[test]
 fn test_session_set_next_sender_target_msg_seq_num() -> Result<(), QuickFixError> {
+    // Both tests register the same session IDs in QuickFIX's process-wide registry.
+    let _lock = utils::checker::GLOBAL_LOCK
+        .lock()
+        .expect("GLOBAL_LOCK poisoned");
+
     let sender = FixRecorder::new(ServerType::Sender.session_id());
     let receiver = FixRecorder::new(ServerType::Receiver.session_id());
 
@@ -125,7 +135,7 @@ fn test_session_set_next_sender_target_msg_seq_num() -> Result<(), QuickFixError
     socket_sender.start()?;
 
     // Wait for login completion
-    while !sender.is_logged_in() && !receiver.is_logged_in() {
+    while !(sender.is_logged_in() && receiver.is_logged_in()) {
         thread::sleep(Duration::from_millis(50));
     }
 
