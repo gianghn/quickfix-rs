@@ -74,6 +74,18 @@ impl Message {
         }
     }
 
+    /// Read underlying struct buffer as raw FIX bytes, without the trailing NUL.
+    ///
+    /// Same as [`Self::to_fix_raw_bytes`] minus the C++ NUL terminator: no NUL scan, no UTF-8
+    /// check, no second copy. For callers that keep the message as bytes (the KRX gateway).
+    pub fn to_fix_bytes(&self) -> Result<Vec<u8>, QuickFixError> {
+        let mut buffer = self.to_fix_raw_bytes()?;
+        if buffer.last() == Some(&0) {
+            buffer.pop();
+        }
+        Ok(buffer)
+    }
+
     /// Try reading underlying struct buffer as a FIX string.
     ///
     /// # Performances
