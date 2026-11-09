@@ -1,0 +1,48 @@
+# KRX fork CI for krx/main (the integration branch the KRX gateway vendors) and its topic
+# branches. Upstream's ci.yml and coverage.yml stay on main. libquickfix is our fork
+# gianghn/quickfix (krx/main); see KRX_FORK_NOTES.md here and there.
+name: KRX fork CI
+on:
+  push:
+    branches: ["krx/**"]
+  pull_request:
+    branches: ["krx/**"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Parallel again: test_session.rs now holds GLOBAL_LOCK like the other session tests.
+      # MultiThreaded is no longer behind a feature, so the default build tests both kinds.
+      - name: Tests
+        run: cargo test --workspace
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      # No -D warnings: upstream's tests and examples carry clippy warnings we don't patch.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
