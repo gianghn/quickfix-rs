@@ -16,7 +16,13 @@ if [[ "$url" != "$want_url" || "$branch" != "$want_branch" ]]; then
 fi
 
 pin=$(git -C "$root" rev-parse "HEAD:$sub")
-git -C "$root/$sub" fetch --quiet origin "$want_branch"
+# CI checks submodules out shallow; the ancestry check needs the branch's history.
+unshallow=()
+shallow=$(git -C "$root/$sub" rev-parse --is-shallow-repository)
+if [[ "$shallow" == true ]]; then
+  unshallow=(--unshallow)
+fi
+git -C "$root/$sub" fetch --quiet ${unshallow[@]+"${unshallow[@]}"} origin "$want_branch"
 if ! git -C "$root/$sub" merge-base --is-ancestor "$pin" FETCH_HEAD; then
   echo "submodule $sub is pinned at $pin, which is not on $want_branch of $want_url" >&2
   exit 1
