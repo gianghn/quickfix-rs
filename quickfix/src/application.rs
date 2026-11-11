@@ -1,11 +1,11 @@
-use std::{any::Any, ffi, marker::PhantomData, mem::ManuallyDrop, panic::catch_unwind};
+use std::{ffi, marker::PhantomData, mem::ManuallyDrop};
 
 use quickfix_ffi::{
     FixApplicationCallbacks_t, FixApplication_delete, FixApplication_new, FixApplication_t,
     FixMessage_t, FixSessionID_t,
 };
 
-use crate::{Message, QuickFixError, SessionId};
+use crate::{utils::abort_on_panic, Message, QuickFixError, SessionId};
 
 /// Error result that can occurs from a `on_msg_to_app` callback.
 #[derive(Debug)]
@@ -44,11 +44,10 @@ trait AsFixCallbackCode {
     fn as_callback_code(&self) -> i8;
 }
 
-fn callback_to_code<T: AsFixCallbackCode>(input: Result<Result<(), T>, Box<dyn Any + Send>>) -> i8 {
+fn callback_to_code<T: AsFixCallbackCode>(input: Result<(), T>) -> i8 {
     match input {
-        Err(_) => 0, // Just ignore the panic from rust and let FIX engine continue its workflow.
-        Ok(Ok(())) => 0, // Everything goes right 🎇!
-        Ok(Err(x)) => x.as_callback_code(), // Use as deliberately change the control flow.
+        Ok(()) => quickfix_ffi::CALLBACK_OK,
+        Err(x) => x.as_callback_code(), // Deliberately change the control flow.
     }
 }
 
@@ -83,40 +82,42 @@ impl AsFixCallbackCode for MsgFromAppError {
 /// These methods notify your application about events that happen on active FIX sessions.
 ///
 /// There is no guarantee how many threads will be calling these functions.
-#[allow(unused_variables)]
+///
+/// A panic in any of these methods aborts the process, so the message it was handling is neither
+/// consumed nor sent: the store still expects it and the peer resends it after a restart.
 pub trait ApplicationCallback {
     /// On session created.
-    fn on_create(&self, session: &SessionId) {}
+    fn on_create(&self, _session: &SessionId) {}
 
     /// On session logon.
-    fn on_logon(&self, session: &SessionId) {}
+    fn on_logon(&self, _session: &SessionId) {}
 
     /// On session logout.
-    fn on_logout(&self, session: &SessionId) {}
+    fn on_logout(&self, _session: &SessionId) {}
 
     /// Called before sending message to admin level.
     ///
     /// Message can be updated at this stage.
-    fn on_msg_to_admin(&self, msg: &mut Message, session: &SessionId) {}
+    fn on_msg_to_admin(&self, _msg: &mut Message, _session: &SessionId) {}
 
     /// Called before sending message to application level.
     ///
     /// Message can be updated at this stage.
-    fn on_msg_to_app(&self, msg: &mut Message, session: &SessionId) -> Result<(), MsgToAppError> {
+    fn on_msg_to_app(&self, _msg: &mut Message, _session: &SessionId) -> Result<(), MsgToAppError> {
         Ok(())
     }
 
     /// Called after received a message from admin level.
     fn on_msg_from_admin(
         &self,
-        msg: &Message,
-        session: &SessionId,
+        _msg: &Message,
+        _session: &SessionId,
     ) -> Result<(), MsgFromAdminError> {
         Ok(())
     }
 
     /// Called after received a message from application level.
-    fn on_msg_from_app(&self, msg: &Message, session: &SessionId) -> Result<(), MsgFromAppError> {
+    fn on_msg_from_app(&self, _msg: &Message, _session: &SessionId) -> Result<(), MsgFromAppError> {
         Ok(())
     }
 }
@@ -155,7 +156,7 @@ where
     extern "C" fn on_create(data: *const ffi::c_void, session: FixSessionID_t) {
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_create(&session_id);
         });
@@ -164,7 +165,7 @@ where
     extern "C" fn on_logon(data: *const ffi::c_void, session: FixSessionID_t) {
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_logon(&session_id);
         });
@@ -173,7 +174,7 @@ where
     extern "C" fn on_logout(data: *const ffi::c_void, session: FixSessionID_t) {
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_logout(&session_id);
         });
@@ -182,7 +183,7 @@ where
     extern "C" fn to_admin(data: *const ffi::c_void, msg: FixMessage_t, session: FixSessionID_t) {
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             let mut msg = ManuallyDrop::new(Message(msg));
             this.on_msg_to_admin(&mut msg, &session_id);
@@ -196,7 +197,7 @@ where
     ) -> i8 {
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let output_code = catch_unwind(|| {
+        let output_code = abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             let mut msg = ManuallyDrop::new(Message(msg));
             this.on_msg_to_app(&mut msg, &session_id)
@@ -213,7 +214,7 @@ where
         let msg = ManuallyDrop::new(Message(msg));
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let output_code = catch_unwind(|| {
+        let output_code = abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_msg_from_admin(&msg, &session_id)
         });
@@ -229,7 +230,7 @@ where
         let msg = ManuallyDrop::new(Message(msg));
         let session_id = ManuallyDrop::new(SessionId(session));
 
-        let output_code = catch_unwind(|| {
+        let output_code = abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_msg_from_app(&msg, &session_id)
         });

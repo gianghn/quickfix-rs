@@ -48,6 +48,13 @@ Added in the rebase: `quickfix/tests/test_session.rs` holds `GLOBAL_LOCK` like u
 tests shared QuickFIX's session registry in parallel and crashed (macOS: 5 of 5 runs failed, 3 with
 SIGSEGV); after, 10 of 10 parallel runs pass. Worth sending upstream.
 
+Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md`):
+
+| Phase | Change | Gateway impact |
+|---|---|---|
+| 1 | Sanitizer CI; last-error buffer no longer leaks per thread | none |
+| 3 | A panic in any application or log callback aborts the process; `UnsupportedMessageType` sends 35=j 380=3; SSL stub returns an error | run under a supervisor that restarts it; `panic = "abort"` in its profiles matches this |
+
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to
 drop it (and move its version requirements from 0.1.6 to 0.2.2) when it takes `krx/main`.

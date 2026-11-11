@@ -47,7 +47,7 @@ fix arrives, so CI stays green.
 
 | # | Decision | Default (used unless the owner says otherwise) | Needed by |
 |---|---|---|---|
-| D1 | Threading default (R-P0-8, pending in `KRX_FORK_NOTES.md`) | `MultiThreaded` becomes the default; `SingleThreaded` stays, marked `#[deprecated]` | phase 6 |
+| D1 | Threading default (R-P0-8, pending in `KRX_FORK_NOTES.md`) | **Decided by the owner, 12 Nov 2026:** `MultiThreaded` becomes the default; `SingleThreaded` stays, marked `#[deprecated]` | phase 6 |
 | D2 | Version after the breaking changes | `0.3.0` on `krx/main` at the end of phase 8; gateway moves in one PR | phase 8 |
 | D3 | Sanitizer toolchain in CI | nightly `-Zsanitizer`, clang 18 for the C++ side, Linux x86_64. ASan without `-Zbuild-std` (verified locally on aarch64 Linux). TSan with `-Zbuild-std`, because an uninstrumented std makes TSan report libtest's own channels as races; `-Zbuild-std` crashes every libtest binary on aarch64 and TSan cannot run under x86_64 emulation, so the TSan job is first verified by CI | phase 1 |
 | D4 | Red tests before their fix | under a sanitizer: listed in `scripts/san-known-red.txt` and skipped by `scripts/san.sh`; in plain `cargo test`: `#[ignore = "red until <item>: why"]`, and `cargo test -- --ignored` shows them red. Each fix phase removes its entries; none left by phase 9 | phase 1 |
@@ -79,9 +79,9 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 
 | Phase | Branch | Status | Red → green |
 |---|---|---|---|
-| 1 | `krx/golive-p1` | done locally, not pushed | ASan: 6 overflow tests + 11 leaking tests → leaks fixed, 6 on known-red (R-P0-7); TSan unverified until CI |
-| 2 | `krx/golive-p2` | done locally, not pushed | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
-| 3 | `krx/golive-p3` | not started | |
+| 1 | `krx/golive-p1` | PR #2 | ASan: 6 overflow tests + 11 leaking tests → leaks fixed, 6 on known-red (R-P0-7); TSan unverified until CI |
+| 2 | `krx/golive-p2` | PR #3 | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
+| 3 | `krx/golive-p3` | done, PR pending | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
 | 4 | `krx/golive-p4` | not started | |
 | 5 | `krx/golive-p5` | not started | |
 | 6 | `krx/golive-p6` | not started | |
@@ -136,3 +136,29 @@ expected; `scripts/san.sh address` (whole workspace): exit 0; `cargo fmt --check
 getters panic and the dictionary rejects them (R-P0-11). Those tests are written in phase 8
 against the `try_get_*` API, and R-P0-11's part waits for the member spec.
 **Decisions taken:** none new.
+
+### Handover 3 — 2026-11-12
+**Built:** R-P0-1: `utils::abort_on_panic` wraps every application and log callback; a panic
+aborts the process. R-P0-5: `fromApp` maps -6 to `UnsupportedMessageType`; `toApp`, `fromAdmin`
+and `fromApp` abort on a result code they do not know (fail closed). R-P2-1: `catch (...)` in
+every binding wrapper (`Fix_setLastErrorText`), SSL stub throws `std::logic_error` by value.
+The callback traits lost upstream's `#[allow(unused_variables)]` (unused default-method
+parameters are `_`-prefixed instead). Docs: `doc/DEV_NOTES.md`, `quickfix/CHANGELOG.md`,
+`KRX_FORK_NOTES.md`.
+**Red → green:** `quickfix/tests/test_callback_failures.rs` and `quickfix-ffi/tests/test_ssl_stub.rs`.
+Red: a panic in each of the 10 callbacks (create, logon, logout, to/from admin, to/from app, log
+incoming/outgoing/event) left the child process running (0/10 aborts); a `from_app` panic
+consumed the message; `UnsupportedMessageType` reached the peer as nothing; the SSL stub killed
+the test process ("Rust cannot catch foreign exceptions"). Green: 10/10 SIGABRT; the receiver's
+FileStore still expects 34=2 after the abort; the peer gets 35=j 380=3; both SSL constructors
+return `None` with `ERRNO_EXCEPTION`. FieldNotFound (35=j 380=5), IncorrectDataFormat (35=3
+373=6) and IncorrectTagValue (35=3 373=5) were already right and stay as characterisation tests.
+**Checks:** `cargo test --workspace` (macOS) all green; `scripts/san.sh address` (Linux) exit 0;
+`cargo fmt --check` ok; clippy: no warning in changed files (upstream test warnings unchanged).
+**Not covered:** the go-live plan's "the peer's resend delivers the message after restart" part of
+the R-P0-1 test: the seqnum check proves the message is not consumed; a restart-and-resend test
+needs the phase 6 lifecycle work and is added there.
+**Decisions taken:** unknown callback codes abort rather than map to a reject (the Rust side
+cannot produce them, so one means the two sides disagree).
+**Hook findings (D5):** `quickfix_bind.cpp` still reports the pre-existing whole-file formatting,
+`new`/`delete` and `strncpy` (R-P1-4, phase 9) findings; the changed lines follow the house style.

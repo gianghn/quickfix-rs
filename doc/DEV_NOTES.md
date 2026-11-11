@@ -83,9 +83,13 @@ So we have to:
 
 2. Catch **EVERY** `panic` that can occurs in Rust code.
 
-    - For this we are using `std::panic::catch_unwind` to wrap every user callbacks.
-    - Sadly we do not cancel the control flow if this occurs.
-    - panic message will be displayed on screen but that's all... User can still register a new panic hook if needed.
+    - Every user callback (application and log) runs inside `utils::abort_on_panic`, which catches
+      the panic and **aborts the process** (KRX fork, R-P0-1).
+    - Reporting the panic as success, as before, lost the inbound message (its seqnum consumed) or
+      sent the outbound one. After an abort the store still expects the message and the peer
+      resends it once the process is restarted, so run it under a supervisor.
+    - The panic message is printed by the panic hook before the abort.
+    - A callback result code the C++ side does not know also aborts (fail closed).
 
 Wait, what about intentional control flow change (like `DoNotSend`) ?
 

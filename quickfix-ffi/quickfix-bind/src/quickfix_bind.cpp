@@ -1,5 +1,6 @@
 #include "quickfix_bind.h"
 
+#include <cstdlib>
 #include <exception>
 
 #include <quickfix/Application.h>
@@ -31,7 +32,7 @@
     _CLS_NAME_(Application &application, MessageStoreFactory &storeFactory, const SessionSettings &settings,           \
                LogFactory &logFactory)                                                                                 \
         : _CLS_IMPLEMENT_(application, storeFactory, settings, logFactory) {                                           \
-      throw new std::logic_error(#_CLS_NAME_ " should not be instantiated.");                                          \
+      throw std::logic_error(#_CLS_NAME_ " should not be instantiated.");                                              \
     }                                                                                                                  \
   }
 
@@ -179,6 +180,9 @@ _IMPL_CLASS_STUB(ThreadedSSLSocketInitiator, StubInitiator);
   } catch (std::exception & e) {                                                                                       \
     Fix_setLastError(e, ERRNO_EXCEPTION);                                                                              \
     return (_VAL_);                                                                                                    \
+  } catch (...) {                                                                                                      \
+    Fix_setLastErrorText("unknown exception (not a std::exception)", ERRNO_EXCEPTION);                                 \
+    return (_VAL_);                                                                                                    \
   }
 
 #define CATCH_OR_RETURN_NULL(_XXX_) CATCH_OR_RETURN(NULL, _XXX_)
@@ -193,11 +197,13 @@ static thread_local std::string lastError;
 static thread_local bool hasLastError = false;
 static thread_local int8_t lastErrorCode = 0;
 
-static void Fix_setLastError(std::exception &ex, int8_t code) {
+static void Fix_setLastErrorText(const char *text, int8_t code) {
   lastErrorCode = code;
-  lastError = ex.what();
+  lastError = text;
   hasLastError = true;
 }
+
+static void Fix_setLastError(std::exception &ex, int8_t code) { Fix_setLastErrorText(ex.what(), code); }
 
 const char *Fix_getLastErrorMessage() { return hasLastError ? lastError.c_str() : nullptr; }
 
@@ -250,8 +256,15 @@ public:
     RETURN_IF_NULL(callbacks->toApp);
     int8_t result = callbacks->toApp(data, &msg, &session);
 
-    if (result == CALLBACK_RESULT_DO_NOT_SEND)
+    switch (result) {
+    case CALLBACK_OK:
+      return;
+    case CALLBACK_RESULT_DO_NOT_SEND:
       throw DoNotSend();
+    default:
+      // Fail closed: never send on a code we do not know (R-P0-5).
+      failOnUnknownCallbackResult();
+    }
   }
 
   void fromAdmin(const Message &msg, const SessionID &session)
@@ -261,6 +274,8 @@ public:
     int8_t result = callbacks->fromAdmin(data, &msg, &session);
 
     switch (result) {
+    case CALLBACK_OK:
+      return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
       throw FieldNotFound();
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
@@ -269,6 +284,8 @@ public:
       throw IncorrectTagValue();
     case CALLBACK_RESULT_REJECT_LOGON:
       throw RejectLogon();
+    default:
+      failOnUnknownCallbackResult();
     }
   }
 
@@ -279,16 +296,25 @@ public:
     int8_t result = callbacks->fromApp(data, &msg, &session);
 
     switch (result) {
+    case CALLBACK_OK:
+      return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
       throw FieldNotFound();
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
       throw IncorrectDataFormat();
     case CALLBACK_RESULT_INCORRECT_TAG_VALUE:
       throw IncorrectTagValue();
-    case CALLBACK_RESULT_REJECT_LOGON:
-      throw RejectLogon();
+    case CALLBACK_RESULT_UNSUPPORTED_MESSAGE_TYPE:
+      throw UnsupportedMessageType();
+    default:
+      failOnUnknownCallbackResult();
     }
   }
+
+private:
+  // A code the binding does not know means the Rust and C++ sides disagree. Accepting the
+  // message would lose it silently, so stop the process like a panic does (R-P0-1, R-P0-5).
+  [[noreturn]] static void failOnUnknownCallbackResult() { std::abort(); }
 };
 
 class ExternalLog : public Log {
