@@ -33,13 +33,41 @@ impl Message {
             .ok_or_else(QuickFixError::from_last_error)
     }
 
-    /// Return a raw FIX message pointer.
+    /// Return a raw FIX message pointer. The message keeps ownership: the pointer is valid only
+    /// while `self` lives.
     pub fn get_fix_message_t(&self) -> FixMessage_t {
         self.0
     }
 
-    /// Return a message from a raw FIX message pointer
-    pub fn from_fix_message_t(fix_message_t: FixMessage_t) -> Result<Self, QuickFixError> {
+    /// Give up ownership of the underlying C++ message and return its raw pointer.
+    ///
+    /// The caller must hand it back exactly once to [`Message::from_fix_message_t`], or the
+    /// message leaks.
+    pub fn into_fix_message_t(self) -> FixMessage_t {
+        ManuallyDrop::new(self).0
+    }
+
+    /// Take ownership of a raw FIX message pointer.
+    ///
+    /// Taking ownership of a pointer is not something safe code may do (R-P0-2):
+    ///
+    /// ```compile_fail
+    /// # use quickfix::Message;
+    /// let raw = Message::new().get_fix_message_t();
+    /// let _adopted = Message::from_fix_message_t(raw);
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// `fix_message_t` must point to a live C++ `FIX::Message` allocated by this library that
+    /// nobody else owns: one returned by [`Message::into_fix_message_t`]. A pointer from
+    /// [`Message::get_fix_message_t`], or a message borrowed in a callback, is still owned
+    /// elsewhere and would be freed twice.
+    ///
+    /// # Errors
+    ///
+    /// None today; the `Result` is kept so callers do not change when validation is added.
+    pub unsafe fn from_fix_message_t(fix_message_t: FixMessage_t) -> Result<Self, QuickFixError> {
         Ok(Self(fix_message_t))
     }
 

@@ -9,6 +9,10 @@
   sent the outbound one. Run the application under a supervisor that restarts it; the peer
   resends what the aborted process had not handled (R-P0-1).
 - A callback result code the C++ binding does not know now aborts instead of being ignored.
+- `ApplicationCallback` and `LogCallback` require `Send + Sync`: QuickFIX calls them from several
+  threads (R-P0-4).
+- `Message::from_fix_message_t` is `unsafe`; pair it with the new `Message::into_fix_message_t`
+  (R-P0-2).
 
 ### Fixes
 

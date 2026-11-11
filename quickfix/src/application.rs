@@ -81,11 +81,18 @@ impl AsFixCallbackCode for MsgFromAppError {
 
 /// These methods notify your application about events that happen on active FIX sessions.
 ///
-/// There is no guarantee how many threads will be calling these functions.
+/// There is no guarantee how many threads will be calling these functions, so implementations
+/// must be `Send + Sync` (R-P0-4); state that is not, such as a `Cell`, is rejected:
+///
+/// ```compile_fail
+/// use std::cell::Cell;
+/// struct Counter(Cell<u32>);
+/// impl quickfix::ApplicationCallback for Counter {}
+/// ```
 ///
 /// A panic in any of these methods aborts the process, so the message it was handling is neither
 /// consumed nor sent: the store still expects it and the peer resends it after a restart.
-pub trait ApplicationCallback {
+pub trait ApplicationCallback: Send + Sync {
     /// On session created.
     fn on_create(&self, _session: &SessionId) {}
 

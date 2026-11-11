@@ -9,6 +9,19 @@ fn test_read_empy_message() {
     assert_eq!(msg.to_fix_string().as_deref(), Ok("9=0\u{1}10=167\u{1}"));
 }
 
+/// R-P0-2: a raw message pointer leaves Rust's ownership with `into_fix_message_t` and comes back,
+/// once, through `unsafe from_fix_message_t`. Run under ASan, this proves one free and no leak.
+#[test]
+fn into_fix_message_t_then_from_fix_message_t_round_trips_ownership() {
+    let msg = Message::try_from_text("42=foo\u{1}56=bar\u{1}").unwrap();
+    let text = msg.to_fix_string().unwrap();
+
+    let raw = msg.into_fix_message_t();
+    // SAFETY: `raw` was released by `into_fix_message_t` just above and is adopted exactly once.
+    let back = unsafe { Message::from_fix_message_t(raw) }.unwrap();
+    assert_eq!(back.to_fix_string().unwrap(), text);
+}
+
 #[test]
 fn test_to_fix_bytes() {
     let msg = Message::new();

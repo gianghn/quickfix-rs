@@ -54,6 +54,8 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 |---|---|---|
 | 1 | Sanitizer CI; last-error buffer no longer leaks per thread | none |
 | 3 | A panic in any application or log callback aborts the process; `UnsupportedMessageType` sends 35=j 380=3; SSL stub returns an error | run under a supervisor that restarts it; `panic = "abort"` in its profiles matches this |
+| 4 | Group copies (`clone_group`, generated group getters) no longer read past the heap | none |
+| 5 | Callback traits require `Send + Sync`; `from_fix_message_t` is `unsafe`, new `into_fix_message_t` | app and log types must be `Send + Sync`; wrap `from_fix_message_t` in `unsafe` with a stated pointer origin |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to
