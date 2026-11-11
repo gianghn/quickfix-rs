@@ -122,6 +122,7 @@ mod session;
 mod session_id;
 mod session_settings;
 mod trailer;
+mod view;
 
 mod utils;
 
@@ -148,6 +149,7 @@ pub use session::{send_to_target, Session};
 pub use session_id::SessionId;
 pub use session_settings::SessionSettings;
 pub use trailer::Trailer;
+pub use view::{Borrowed, GroupMut, HeaderMut, MessageMut, TrailerMut};
 
 #[cfg(feature = "log")]
 pub use log_factory::RustLogger;

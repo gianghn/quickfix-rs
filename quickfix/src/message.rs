@@ -13,6 +13,7 @@ use crate::{
     header::Header,
     trailer::Trailer,
     utils::{ffi_code_to_result, read_checked_cstr},
+    view::{Borrowed, GroupMut, HeaderMut, TrailerMut},
     FieldMap, IntoFixValue, QuickFixError,
 };
 
@@ -165,19 +166,27 @@ impl Message {
 
     /// Read or write struct header part.
     ///
+    /// The header is borrowed from the message; it cannot be swapped out, which would free it
+    /// under the message (R-P0-3):
+    ///
+    /// ```compile_fail
+    /// # use quickfix::*;
+    /// let mut msg = Message::new();
+    /// msg.with_header_mut(|h| std::mem::swap(h, &mut Header::new()));
+    /// ```
+    ///
     /// # Panic
     ///
     /// When struct pointer cannot be read from `FIX::Message`. This is
     /// something that could not be theoretically possible.
     pub fn with_header_mut<T, F>(&mut self, f: F) -> T
     where
-        F: FnOnce(&mut Header) -> T,
+        F: FnOnce(&mut HeaderMut<'_>) -> T,
     {
         let ptr =
             unsafe { FixMessage_getHeaderRef(self.0) }.expect("Fail to get ptr on message header");
 
-        let mut obj = ManuallyDrop::new(Header(ptr));
-        f(&mut obj)
+        f(&mut Borrowed::new(Header(ptr)))
     }
 
     /// Clone struct trailer part.
@@ -210,45 +219,49 @@ impl Message {
 
     /// Read or write struct trailer part.
     ///
+    /// ```compile_fail
+    /// # use quickfix::*;
+    /// let mut msg = Message::new();
+    /// msg.with_trailer_mut(|t| std::mem::take(t));
+    /// ```
+    ///
     /// # Panic
     ///
     /// When struct pointer cannot be read from `FIX::Message`. This is
     /// something that could not be theoretically possible.
     pub fn with_trailer_mut<T, F>(&mut self, f: F) -> T
     where
-        F: FnOnce(&mut Trailer) -> T,
+        F: FnOnce(&mut TrailerMut<'_>) -> T,
     {
         let ptr = unsafe { FixMessage_getTrailerRef(self.0) }
             .expect("Fail to get ptr on message trailer");
 
-        let mut obj = ManuallyDrop::new(Trailer(ptr));
-        f(&mut obj)
+        f(&mut Borrowed::new(Trailer(ptr)))
     }
 
     /// Read struct group part for a given tag and group index.
     pub fn with_group<T, F>(&self, index: i32, tag: i32, f: F) -> Option<T>
     where
-        F: FnOnce(&Group) -> T,
+        F: FnOnce(&GroupMut<'_>) -> T,
     {
-        if let Some(ptr) = unsafe { FixMessage_getGroupRef(self.0, index, tag) } {
-            let obj = ManuallyDrop::new(Group(ptr));
-            Some(f(&obj))
-        } else {
-            None
-        }
+        let ptr = unsafe { FixMessage_getGroupRef(self.0, index, tag) }?;
+        Some(f(&GroupMut::new(Group(ptr), tag)))
     }
 
     /// Read or write struct group part for a given tag and group index.
+    ///
+    /// ```compile_fail
+    /// # use quickfix::*;
+    /// let mut msg = Message::new();
+    /// let mut other = Group::try_new(33, 58).unwrap();
+    /// msg.with_group_mut(1, 33, |g| std::mem::swap(g, &mut other));
+    /// ```
     pub fn with_group_mut<T, F>(&mut self, index: i32, tag: i32, f: F) -> Option<T>
     where
-        F: FnOnce(&mut Group) -> T,
+        F: FnOnce(&mut GroupMut<'_>) -> T,
     {
-        if let Some(ptr) = unsafe { FixMessage_getGroupRef(self.0, index, tag) } {
-            let mut obj = ManuallyDrop::new(Group(ptr));
-            Some(f(&mut obj))
-        } else {
-            None
-        }
+        let ptr = unsafe { FixMessage_getGroupRef(self.0, index, tag) }?;
+        Some(f(&mut GroupMut::new(Group(ptr), tag)))
     }
 }
 

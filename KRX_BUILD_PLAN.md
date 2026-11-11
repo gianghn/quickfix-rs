@@ -85,8 +85,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 3 | `krx/golive-p3` | PR #4 | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
 | 4 | `krx/golive-p4` | PR #5 | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
 | 5 | `krx/golive-p5` | PR #7 | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
-| 6 | `krx/golive-p6` | done, PR pending | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
-| 7 | `krx/golive-p7` | not started | |
+| 6 | `krx/golive-p6` | PR #8 | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
+| 7 | `krx/golive-p7` | done, PR pending | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
 | 8 | `krx/golive-p8` | not started | |
 | 9 | `krx/golive-p9` | not started | |
 | 10 | `krx/golive-p10` | not started | |
@@ -234,3 +234,28 @@ lint fires inside this crate too, and the crate must name one single-threaded ki
 two apart; `#[allow(deprecated)]` is not allowed (policy). The go-live plan asks for 50 seeded
 runs of the drop test; 10 ran here, CI runs it on every push.
 **Decisions taken:** none new (D1 by the owner).
+
+### Handover 7 — 2026-11-12
+**Built:** R-P0-3: new `view.rs`. `Borrowed<'a, T>` (aliases `MessageMut`, `HeaderMut`,
+`TrailerMut`) wraps a C++ object owned elsewhere: no `Drop`, `Default` or `Clone`, reads through
+`Deref` to `&T`, writes through `FieldMap`, no `&mut T`. `GroupMut<'a>` is the group-entry view:
+it reports the tag it was looked up by and has no delimiter, because QuickFIX stores entries as
+plain field maps (the deferred half of R-P0-7). `with_header_mut`, `with_trailer_mut`,
+`with_group`, `with_group_mut` and the `on_msg_to_admin` / `on_msg_to_app` callbacks hand out
+these views. Nothing a caller can move out of a view frees anything; two views cannot be swapped
+across borrows (`&mut` is invariant in the view's lifetime), and swapping two views of the same
+borrow frees nothing either.
+**Red → green:** 4 `compile_fail` doctests (swap a borrowed header out, `mem::take` a trailer,
+swap a group entry, `mem::take` the message in `on_msg_to_app`) compiled before and do not now.
+`with_group_reports_field_id_of_the_entry` (was the ignored phase 4 test, now checking field id
+and a field instead of the delimiter an entry does not have) is enabled and green.
+**Checks:** `cargo test --workspace` (macOS) green, doctests 8/8; generated message crates build
+unchanged (their closures infer the new types); `scripts/san.sh address` exit 0; fmt ok.
+**Breaking for the gateway:** `on_msg_to_admin` / `on_msg_to_app` take `&mut MessageMut<'_>`;
+`with_*_mut` closures get `&mut HeaderMut<'_>` / `&mut TrailerMut<'_>` / `&mut GroupMut<'_>`;
+`with_group` gives `&GroupMut<'_>`. Closures that let the type be inferred keep compiling; named
+`fn(&mut Header)` helpers must change their parameter type. Reads still work through `Deref`.
+**Away from the plan:** `GroupMut` still calls the `FixGroup_*` field functions on the stored
+`FieldMap` pointer: they only touch the `FieldMap` base, so ASan is clean, but strictly it is a
+`Group*` that points to a `FieldMap`. A `FixFieldMap_*` C API would remove that; not done here.
+**Decisions taken:** one generic `Borrowed<T>` instead of four hand-written view types.

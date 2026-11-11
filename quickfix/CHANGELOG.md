@@ -15,6 +15,12 @@
   (R-P0-2).
 - `FixSocketServerKind::default()` is `MultiThreaded`; `SingleThreaded` is deprecated: QuickFIX's
   plain socket classes crash at random in `stop()` (R-P0-8).
+- Borrowed parts are views, not `&mut` owned types (R-P0-3): `on_msg_to_admin` and
+  `on_msg_to_app` take `&mut MessageMut<'_>`; `with_header_mut`, `with_trailer_mut`,
+  `with_group_mut` and `with_group` give `HeaderMut`, `TrailerMut` and `GroupMut`. They read
+  through `Deref` and write through `FieldMap`, and cannot be swapped out (which freed the C++
+  object under its owner). `GroupMut::field_id()` is the tag it was looked up by; it has no
+  `delim()`.
 
 ### Fixes
 

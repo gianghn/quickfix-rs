@@ -46,12 +46,16 @@ impl ApplicationCallback for MyApplication {
         self.print_callback("on_logout", session, None);
     }
 
-    fn on_msg_to_admin(&self, msg: &mut Message, session: &SessionId) {
+    fn on_msg_to_admin(&self, msg: &mut MessageMut<'_>, session: &SessionId) {
         self.inc_message_index();
         self.print_callback("to_admin", session, Some(msg));
     }
 
-    fn on_msg_to_app(&self, msg: &mut Message, session: &SessionId) -> Result<(), MsgToAppError> {
+    fn on_msg_to_app(
+        &self,
+        msg: &mut MessageMut<'_>,
+        session: &SessionId,
+    ) -> Result<(), MsgToAppError> {
         self.inc_message_index();
         self.print_callback("to_app", session, Some(msg));
         Ok(())

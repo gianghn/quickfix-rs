@@ -85,10 +85,10 @@ impl ApplicationCallback for PanicApp {
     fn on_logout(&self, _: &SessionId) {
         self.hit(Target::OnLogout);
     }
-    fn on_msg_to_admin(&self, _: &mut Message, _: &SessionId) {
+    fn on_msg_to_admin(&self, _: &mut MessageMut<'_>, _: &SessionId) {
         self.hit(Target::ToAdmin);
     }
-    fn on_msg_to_app(&self, _: &mut Message, _: &SessionId) -> Result<(), MsgToAppError> {
+    fn on_msg_to_app(&self, _: &mut MessageMut<'_>, _: &SessionId) -> Result<(), MsgToAppError> {
         self.hit(Target::ToApp);
         Ok(())
     }
