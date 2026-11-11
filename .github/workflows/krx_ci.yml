@@ -46,3 +46,56 @@ jobs:
       # No -D warnings: upstream's tests and examples carry clippy warnings we don't patch.
       - name: Clippy
         run: cargo clippy --workspace --all-targets
+
+  # Most go-live P0s are memory or thread bugs that plain `cargo test` cannot see.
+  # Tests in scripts/san-known-red.txt are open items and skipped (KRX_BUILD_PLAN.md, D4).
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          # rustfmt: the message crates' build scripts format the generated code.
+          components: rust-src, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: san-${{ matrix.sanitizer }}
+      # clang's sanitizer runtimes for the C++ side, and llvm-symbolizer for readable reports.
+      - name: clang runtime
+        run: sudo apt-get install -y --no-install-recommends libclang-rt-18-dev llvm-18
+      # The runner kernel's ASLR entropy is too high for TSan's memory layout.
+      - name: ASLR entropy for TSan
+        if: matrix.sanitizer == 'thread'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Tests under ${{ matrix.sanitizer }} sanitizer
+        run: scripts/san.sh ${{ matrix.sanitizer }}
+
+  # The socket tests are timing-sensitive; one green run proves little (R-P0-8).
+  socket-loop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Socket tests, 20 runs
+        run: scripts/test-loop.sh 20
+
+  # libquickfix must come from our fork's krx/main (KRX_FORK_NOTES.md).
+  submodule-pin:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Submodule commit is on gianghn/quickfix krx/main
+        run: scripts/check-submodule-pin.sh
