@@ -119,8 +119,11 @@ You may consider checking out this [repository](https://github.com/arthurlm/quic
 
 ## Is it ready for production ?
 
-Yes. But keep in mind that not every feature of the original FIX library are available.
-If some of your needs are missing: PR / feedbacks are welcomed 😁!
+Not on its own. This KRX fork is being hardened for go-live (`KRX_GOLIVE_PLAN.md`,
+`KRX_BUILD_PLAN.md`), and the evidence on the certified C++ pair is still to come. Use
+`FixSocketServerKind::MultiThreaded`, run the process under a supervisor (a callback panic
+aborts it), and see `doc/RUNBOOK_SEQNUM.md` before resetting a session.
+Not every feature of the original FIX library is available.
 
 **API MAY CHANGE IN FUTURE VERSION**\
 Crate is still in the [reviewing process](https://github.com/quickfix/quickfix/issues/533).

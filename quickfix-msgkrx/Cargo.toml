@@ -1,7 +1,7 @@
 [package]
 name = "quickfix-msgkrx"
 version = "0.2.2"
-authors = ["Arthur LE MOIGNE"]
+authors = ["Arthur LE MOIGNE", "Giang Nguyen"]
 edition = "2021"
 description = "FIX 4.4 messages for the KRX (HOSE/HNX) dictionary, generated from FIX44KRX.xml"
 repository = "https://github.com/gianghn/quickfix-rs"

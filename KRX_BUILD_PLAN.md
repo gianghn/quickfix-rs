@@ -53,6 +53,10 @@ fix arrives, so CI stays green.
 | D4 | Red tests before their fix | under a sanitizer: listed in `scripts/san-known-red.txt` and skipped by `scripts/san.sh`; in plain `cargo test`: `#[ignore = "red until <item>: why"]`, and `cargo test -- --ignored` shows them red. Each fix phase removes its entries; none left by phase 9 | phase 1 |
 | D5 | Lint scope | **Decided by the owner, 12 Nov 2026.** New files must pass `lint.sh`. `quickfix-ffi/quickfix-bind` and `libquickfix` count as vendored upstream code: changed lines follow the house style where they can, the files are not reformatted, and the hook's findings on them are reported in each handover. Whether to exempt vendored C++ in the central policy is the owner's later call | every phase |
 | D6 | TSan gate | **Decided by the owner, 12 Nov 2026.** The first CI TSan run found a race in QuickFIX's own `FIX::Mutex::lock()` (unsynchronised read of the owner in its recursive lock; `Initiator::isLoggedOn` vs `connect`). Until a C++ pin fixes it, the TSan job is report-only (`continue-on-error`, `halt_on_error=0`) and lists every distinct race in its job summary; C++ races go to the C++ fork, Rust-side races are fixed here. ASan stays blocking. TSan becomes blocking again after the bump | phase 1 |
+| D7 | `cargo deny` (R-P1-6) | **Decided by the owner, 12 Nov 2026.** No repo `deny.toml` (policy). CI here runs `cargo audit` (advisories, no config); licenses, bans and duplicates are checked by `cargo deny` with the central config on the gateway's own `Cargo.lock`, which is what ships | phase 10 |
+| D8 | `clippy -D warnings` (R-P1-6) | **Decided by the owner, 12 Nov 2026.** Fix the warnings in upstream tests and examples, deny warnings on the whole workspace, on a pinned toolchain (1.99.1) bumped on purpose | phase 10 |
+| D9 | FFI naming lint | **Decided by the owner, 12 Nov 2026.** Keep `#![allow(non_camel_case_types, non_snake_case)]` in `quickfix-ffi` (names mirror the C ABI); the owner adds a narrow exemption for FFI crate roots to the central policy | phase 10 |
+| D10 | Phase 10 size | R-P2-2 is eight changes, several new API; split into 10a (build, CI, docs: R-P1-5, R-P1-6, R-P1-7, R-P2-7) and 10b (R-P2-2) | phase 10 |
 
 ## 4. Phases
 
@@ -88,8 +92,9 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 6 | `krx/golive-p6` | PR #8 | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
 | 7 | `krx/golive-p7` | PR #9 | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
 | 8 | `krx/golive-p8` | PR #10 | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
-| 9 | `krx/golive-p9` | done, PR pending | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
-| 10 | `krx/golive-p10` | not started | |
+| 9 | `krx/golive-p9` | PR #11 | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
+| 10a | `krx/golive-p10` | done, PR pending | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
+| 10b | `krx/golive-p10b` | not started | R-P2-2 |
 
 ## 6. Handover notes
 
@@ -310,3 +315,37 @@ a length (C and Rust FFI users).
 non_snake_case)]` at the top of `quickfix-ffi/src/lib.rs`, which exists because the FFI names
 mirror the C ABI (`FixMessage_t`, `onIncoming`). Removing it means renaming the whole C binding;
 not done.
+
+### Handover 10a — 2026-11-12
+**Built:** R-P1-5: `build.rs` no longer runs `git submodule update`; a missing submodule stops
+the build with the command to run. sccache/ccache only with `QUICKFIX_FFI_COMPILER_LAUNCHER`.
+`build.rs` sets `CMAKE_C/CXX_FLAGS` itself (cmake-rs adds `-w`, which hid every warning):
+`-Wall -fno-omit-frame-pointer -fstack-protector-strong -ffile-prefix-map`, plus
+`-fstack-clash-protection` and `-D_FORTIFY_SOURCE=2` on Linux (FORTIFY left out under a
+sanitizer); the user's `CFLAGS`/`CXXFLAGS` are kept, so `san.sh` still instruments the C++.
+libquickfix builds in its own directory (`libquickfix-out`). MSVC keeps cmake-rs's flags.
+R-P1-6: `krx_ci.yml` gains `msrv` (1.86, `--locked`), `release` (`--release --locked`),
+`build-hardening`, `audit` (D7), `ssl` (`build-with-ssl`); clippy on 1.99.1 with `-D warnings`
+(D8) after fixing 18 warnings in upstream tests/examples; every action pinned by SHA;
+`permissions: contents: read`. R-P1-7: `Session::reset` rustdoc warns it wipes the store;
+`doc/RUNBOOK_SEQNUM.md`. R-P2-7: README no longer says "ready for production"; msgkrx crate
+doc names FIX44KRX.xml; msgkrx authors; the SharePoint share link in FIX44KRX.xml replaced by
+the workbook version. `.gitignore` covers the local C++ lint build dirs.
+**Red → green:** `scripts/check-build-hardening.sh`: 7 failures (git run for the missing
+submodule, -Wall / frame pointers / stack protector / prefix map missing, `-w` present, one
+CMake cache shared by both builds) → 0 on macOS and Linux (FORTIFY and stack-clash checked).
+**Checks:** `cargo test --workspace` green (macOS); doctests 8/8; clippy `-D warnings` exit 0;
+`cargo +1.86.0 check --workspace --all-targets --locked` ok; `cargo audit` 0 advisories; SSL
+feature tests green (Linux container); `scripts/san.sh address` exit 0 (Linux); fmt ok.
+`build.rs` returns a typed `BuildError` instead of `expect`/`panic!`; every Rust file this phase
+changed is clean under the policy's clippy. `lint.sh` still fails on code this phase did not
+touch: vendored C++ (D5), upstream crates' config/metadata/ast-grep findings, and `--all-features`
+needing MySQL.
+**Found on the way:** `fix_repl`'s `parse_send_to` consumed the `send_to` token inside a
+`debug_assert_eq!`, so release builds read the command word as the message; fixed.
+**Away from the plan:** not done here: identical `libquickfix.a` from two clean builds, split
+debuginfo, a production-matching distro image (which distro does the gateway ship on?), and the
+30-run reset chaos test (R-P1-7 evidence, needs the C++ pair).
+**Left for the owner:** the SharePoint link is still in git history; msgkrx's `license` is
+upstream's `MIT OR Apache-1.1` (the QuickFIX licence file) — is that right for the KRX
+dictionary? D9 exemption in the central policy.

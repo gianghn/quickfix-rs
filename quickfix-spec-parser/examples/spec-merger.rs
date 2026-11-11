@@ -8,8 +8,7 @@ fn main() {
         .map(|filename| {
             eprintln!("Parsing file: {filename}");
             let file_content = fs::read(filename).expect("Cannot read file");
-            let spec = parse_spec(&file_content).expect("Cannot parse spec");
-            spec
+            parse_spec(&file_content).expect("Cannot parse spec")
         })
         .fold(FixSpec::new_fixt(), |mut acc, item| {
             // Extend un-sortable fields
@@ -45,7 +44,7 @@ fn merge_field_specs(a: &[FieldSpec], b: &[FieldSpec]) -> Vec<FieldSpec> {
             .or_insert_with(|| FieldSpec {
                 number: field_spec.number,
                 name: field_spec.name.clone(),
-                r#type: field_spec.r#type.clone(),
+                r#type: field_spec.r#type,
                 values: Vec::new(),
             });
 
