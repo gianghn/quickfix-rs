@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <exception>
+#include <memory>
 
 #include <quickfix/Application.h>
 #include <quickfix/DataDictionary.h>
@@ -999,36 +1000,35 @@ Group *FixGroup_copy(const Group *src) {
   CATCH_OR_RETURN_NULL({ return new Group(*src); });
 }
 
+// QuickFIX stores each group entry as a plain FieldMap, not a Group: copying it as a Group read
+// the field id and delimiter past the end of the object (R-P0-7). Build a real Group instead:
+// the count tag is `tag`, the delimiter is the entry's first field (fields are kept in order).
+static Group *copyGroupEntry(const FieldMap &parent, int32_t num, int32_t tag) {
+  const FieldMap &entry = parent.getGroupRef(num, tag);
+  const int delim = entry.begin() == entry.end() ? 0 : entry.begin()->getTag();
+  auto group = std::make_unique<Group>(tag, delim);
+  static_cast<FieldMap &>(*group) = entry;
+  return group.release();
+}
+
 Group *FixMessage_copyGroup(const Message *obj, int32_t num, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
-  CATCH_OR_RETURN_NULL({
-    auto src_group = static_cast<Group *>(obj->getGroupPtr(num, tag));
-    return new Group(*src_group);
-  });
+  CATCH_OR_RETURN_NULL({ return copyGroupEntry(*obj, num, tag); });
 }
 
 Group *FixHeader_copyGroup(const Header *obj, int32_t num, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
-  CATCH_OR_RETURN_NULL({
-    auto src_group = static_cast<Group *>(obj->getGroupPtr(num, tag));
-    return new Group(*src_group);
-  });
+  CATCH_OR_RETURN_NULL({ return copyGroupEntry(*obj, num, tag); });
 }
 
 Group *FixTrailer_copyGroup(const Trailer *obj, int32_t num, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
-  CATCH_OR_RETURN_NULL({
-    auto src_group = static_cast<Group *>(obj->getGroupPtr(num, tag));
-    return new Group(*src_group);
-  });
+  CATCH_OR_RETURN_NULL({ return copyGroupEntry(*obj, num, tag); });
 }
 
 Group *FixGroup_copyGroup(const Group *obj, int32_t num, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
-  CATCH_OR_RETURN_NULL({
-    auto src_group = static_cast<Group *>(obj->getGroupPtr(num, tag));
-    return new Group(*src_group);
-  });
+  CATCH_OR_RETURN_NULL({ return copyGroupEntry(*obj, num, tag); });
 }
 
 Group *FixMessage_getGroupRef(const Message *obj, int32_t num, int32_t tag) {

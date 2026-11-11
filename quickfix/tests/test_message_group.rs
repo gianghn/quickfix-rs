@@ -218,6 +218,56 @@ fn test_read_group_clone() {
     assert!(msg.clone_group(4, MSG_NO_LINES_OF_TEXT).is_none());
 }
 
+/// R-P0-7: QuickFIX stores group entries as plain `FieldMap`s; the copy used to read the
+/// `Group`-only members (field id, delimiter) past the end of that object.
+#[test]
+fn clone_group_returns_group_with_its_field_id_and_delim() {
+    let msg = build_news("Great news", &["first", "second"]).unwrap();
+    for index in 1..=2 {
+        let group = msg.clone_group(index, MSG_NO_LINES_OF_TEXT).unwrap();
+        assert_eq!(
+            (group.field_id(), group.delim()),
+            (MSG_NO_LINES_OF_TEXT, MSG_TEXT)
+        );
+        assert_eq!(group.clone().field_id(), MSG_NO_LINES_OF_TEXT);
+    }
+}
+
+#[test]
+#[ignore = "red until R-P0-3 (phase 7): with_group hands out a stored entry, a plain FieldMap, as a Group"]
+fn with_group_reports_field_id_and_delim_of_the_entry() {
+    let msg = build_news("Great news", &["first"]).unwrap();
+    let ids = msg.with_group(1, MSG_NO_LINES_OF_TEXT, |g| (g.field_id(), g.delim()));
+    assert_eq!(ids, Some((MSG_NO_LINES_OF_TEXT, MSG_TEXT)));
+}
+
+const MSG_NO_HOPS: i32 = 627;
+const MSG_HOP_COMP_ID: i32 = 628;
+
+#[test]
+fn clone_group_of_header_and_nested_group_returns_groups_with_their_ids() {
+    let mut outer = Group::try_new(MSG_NO_LINES_OF_TEXT, MSG_TEXT).unwrap();
+    outer.set_field(MSG_TEXT, "outer").unwrap();
+    let mut inner = Group::try_new(MSG_NO_HOPS, MSG_HOP_COMP_ID).unwrap();
+    inner.set_field(MSG_HOP_COMP_ID, "hop").unwrap();
+    outer.add_group(&inner).unwrap();
+
+    let nested = outer.clone_group(1, MSG_NO_HOPS).unwrap();
+    assert_eq!(
+        (nested.field_id(), nested.delim()),
+        (MSG_NO_HOPS, MSG_HOP_COMP_ID)
+    );
+    assert_eq!(nested.get_field(MSG_HOP_COMP_ID).as_deref(), Some("hop"));
+
+    let mut msg = Message::new();
+    msg.with_header_mut(|h| h.add_group(&inner)).unwrap();
+    let hop = msg.with_header(|h| h.clone_group(1, MSG_NO_HOPS)).unwrap();
+    assert_eq!(
+        (hop.field_id(), hop.delim()),
+        (MSG_NO_HOPS, MSG_HOP_COMP_ID)
+    );
+}
+
 #[test]
 fn test_read_group_ref() {
     let msg = build_news("Great news", &["Some new library", "are available", "soon"]).unwrap();

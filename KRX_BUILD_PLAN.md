@@ -82,8 +82,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 |---|---|---|---|
 | 1 | `krx/golive-p1` | PR #2 | ASan: 6 overflow tests + 11 leaking tests → leaks fixed, 6 on known-red (R-P0-7); TSan unverified until CI |
 | 2 | `krx/golive-p2` | PR #3 | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
-| 3 | `krx/golive-p3` | done, PR pending | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
-| 4 | `krx/golive-p4` | not started | |
+| 3 | `krx/golive-p3` | PR #4 | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
+| 4 | `krx/golive-p4` | done, PR pending | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
 | 5 | `krx/golive-p5` | not started | |
 | 6 | `krx/golive-p6` | not started | |
 | 7 | `krx/golive-p7` | not started | |
@@ -163,3 +163,25 @@ needs the phase 6 lifecycle work and is added there.
 cannot produce them, so one means the two sides disagree).
 **Hook findings (D5):** `quickfix_bind.cpp` still reports the pre-existing whole-file formatting,
 `new`/`delete` and `strncpy` (R-P1-4, phase 9) findings; the changed lines follow the house style.
+
+### Handover 4 — 2026-11-12
+**Built:** R-P0-7 copy part. QuickFIX stores every group entry as a plain `FieldMap`; the four
+`*_copyGroup` wrappers cast it to `Group` and copy-constructed a `Group`, reading `m_field` and
+`m_delim` past the object. One helper, `copyGroupEntry`, now builds a real `Group(tag, delim)`
+(delim = the entry's first field) and assigns the `FieldMap` into it (`std::make_unique`, so the
+four naked `new`s are gone too).
+**Red → green:** the 5 known-red ASan tests (`test_read_group_clone`,
+`test_build_custom_with_recursive_groups`, msg40 `test_build_list_status`, `test_group_iterator`,
+KRX `iter_no_party_i_ds_reads_parties_and_nested_sub_ids`) plus two new plain tests
+(`clone_group_returns_group_with_its_field_id_and_delim`,
+`clone_group_of_header_and_nested_group_returns_groups_with_their_ids`: message, header and
+nested group) that read field id 3074920 / 3075360 instead of 33 / 627. After: all green, the
+known-red list is empty, `scripts/san.sh address` exit 0 on the whole workspace.
+**Checks:** native `cargo test` on quickfix, msg40, msgkrx green; ASan (Linux) exit 0; fmt ok.
+**Away from the plan:** the `getGroupRef` half of R-P0-7 moves to phase 7. `with_group` /
+`with_group_mut` hand the stored entry (a `FieldMap`) out as a `&Group`; `field_id()`, `delim()`
+and `Debug` on it read garbage (`with_group_reports_field_id_and_delim_of_the_entry`, red,
+`#[ignore]`). The fix is phase 7's borrowed view type, which has no field id. For the same reason
+the generator keeps `clone_group` (now correct) instead of switching to `with_group`.
+**Decisions taken:** delimiter of a copied entry = its first field, which is what QuickFIX's own
+ordering puts first.
