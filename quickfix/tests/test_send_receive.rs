@@ -67,10 +67,11 @@ where
     socket_receiver.start()?;
     socket_sender.start()?;
 
-    // Wait for login completion
-    while !sender.is_logged_in() && !receiver.is_logged_in() {
-        thread::sleep(Duration::from_millis(50));
-    }
+    // Wait until both sides are logged on, not either (R-P0-8).
+    let logged_on = utils::checker::wait_until(Duration::from_secs(10), || {
+        sender.is_logged_in() && receiver.is_logged_in()
+    });
+    assert!(logged_on, "both sides logged on");
 
     // Check connection state = ON
     assert!(sender.is_logged_in());
@@ -168,11 +169,7 @@ where
     Ok(())
 }
 
-#[test]
-fn test_full_fix_application_single_thread() -> Result<(), QuickFixError> {
-    run(FixSocketServerKind::SingleThreaded, build_settings)
-}
-
+// No SingleThreaded test: the kind is deprecated, its stop() crashes at random (R-P0-8).
 #[test]
 fn test_full_fix_application_multi_thread() -> Result<(), QuickFixError> {
     run(FixSocketServerKind::MultiThreaded, build_settings)

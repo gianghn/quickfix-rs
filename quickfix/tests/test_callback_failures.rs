@@ -127,15 +127,26 @@ fn wait_until(timeout: Duration, mut done: impl FnMut() -> bool) -> bool {
 
 /// Child body: sender (initiator) and receiver (acceptor, FileStore) log on and exchange one
 /// News each way; `target` panics on the receiver side.
-fn run_child(target: Target, store: &Path) -> Result<(), QuickFixError> {
-    let port = find_available_port();
-    let settings_sender = build_settings(ServerType::Sender, port)?;
-    let mut settings_receiver = build_settings(ServerType::Receiver, port)?;
+/// Sender and receiver settings with both FileStores in `store` (QuickFIX prefixes each file with
+/// its session), so a later run picks up the sequence numbers and messages where this one ended.
+fn file_store_settings(
+    port: u16,
+    store: &Path,
+) -> Result<(SessionSettings, SessionSettings), QuickFixError> {
     let store_path = store.to_str().expect("utf-8 store path");
-    settings_receiver.set(
-        None,
-        Dictionary::try_from_items(&[&FileStorePath(store_path)])?,
-    )?;
+    let mut sender = build_settings(ServerType::Sender, port)?;
+    let mut receiver = build_settings(ServerType::Receiver, port)?;
+    for settings in [&mut sender, &mut receiver] {
+        settings.set(
+            None,
+            Dictionary::try_from_items(&[&FileStorePath(store_path)])?,
+        )?;
+    }
+    Ok((sender, receiver))
+}
+
+fn run_child(target: Target, store: &Path) -> Result<(), QuickFixError> {
+    let (settings_sender, settings_receiver) = file_store_settings(find_available_port(), store)?;
 
     let sender = NullFixApplication;
     let receiver = PanicApp(Some(target));
@@ -146,7 +157,7 @@ fn run_child(target: Target, store: &Path) -> Result<(), QuickFixError> {
     );
     let app_sender = Application::try_new(&sender)?;
     let app_receiver = Application::try_new(&receiver)?;
-    let store_sender = MemoryMessageStoreFactory::new();
+    let store_sender = FileMessageStoreFactory::try_new(&settings_sender)?;
     let store_receiver = FileMessageStoreFactory::try_new(&settings_receiver)?;
 
     let kind = FixSocketServerKind::MultiThreaded;
@@ -196,12 +207,8 @@ fn child_process_entry() {
     run_child(target, Path::new(&store)).expect("child session ran");
 }
 
-fn store_dir(target: Target) -> PathBuf {
-    let dir = env::temp_dir().join(format!(
-        "qfrs-panic-{}-{}",
-        std::process::id(),
-        target.name()
-    ));
+fn store_dir(label: &str) -> PathBuf {
+    let dir = env::temp_dir().join(format!("qfrs-panic-{}-{label}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("store dir");
     dir
@@ -229,8 +236,8 @@ fn receiver_next_target_seqnum(store: &Path) -> u32 {
         .expect("store dir readable")
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .find(|p| p.to_string_lossy().ends_with("seqnums"))
-        .expect("seqnums file");
+        .find(|p| p.to_string_lossy().ends_with("RECEIVER-SENDER.seqnums"))
+        .expect("receiver seqnums file");
     let text = fs::read_to_string(file).expect("seqnums readable");
     let target = text.split(':').nth(1).expect("sender : target");
     target.trim().parse().expect("seqnum")
@@ -248,7 +255,7 @@ fn every_callback_panic_aborts_the_process() {
     let _lock = serial();
     let survived: Vec<_> = Target::ALL
         .into_iter()
-        .filter(|&t| child_signal(t, &store_dir(t)) != Some(SIGABRT))
+        .filter(|&t| child_signal(t, &store_dir(&t.name())) != Some(SIGABRT))
         .collect();
     assert!(survived.is_empty(), "no abort for a panic in {survived:?}");
 }
@@ -256,10 +263,70 @@ fn every_callback_panic_aborts_the_process() {
 #[test]
 fn from_app_panic_leaves_the_message_unconsumed() {
     let _lock = serial();
-    let store = store_dir(Target::FromApp);
+    let store = store_dir("unconsumed");
     assert_eq!(child_signal(Target::FromApp, &store), Some(SIGABRT));
     // Logon was 34=1 and the News 34=2: the store must still expect 2, so the peer resends it.
     assert_eq!(receiver_next_target_seqnum(&store), 2);
+}
+
+/// Headlines (148) of the News messages the receiver handled.
+#[derive(Debug, Default)]
+struct Headlines(Mutex<Vec<String>>);
+
+impl Headlines {
+    fn contains(&self, headline: &str) -> bool {
+        let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.iter().any(|h| h == headline)
+    }
+}
+
+impl ApplicationCallback for Headlines {
+    fn on_msg_from_app(&self, msg: &Message, _: &SessionId) -> Result<(), MsgFromAppError> {
+        if let Some(headline) = msg.get_field(MSG_HEADLINE) {
+            let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+            seen.push(headline);
+        }
+        Ok(())
+    }
+}
+
+/// The other half of R-P0-1: after the abort, a restarted pair on the same stores delivers the
+/// message the aborted process never handled (the receiver asks, the sender resends it).
+#[test]
+fn from_app_panic_message_is_delivered_after_restart() -> Result<(), QuickFixError> {
+    let _lock = serial();
+    let store = store_dir("restart");
+    assert_eq!(child_signal(Target::FromApp, &store), Some(SIGABRT));
+
+    let (settings_sender, settings_receiver) = file_store_settings(find_available_port(), &store)?;
+    let (sender, receiver) = (NullFixApplication, Headlines::default());
+    let log = LogFactory::try_new(&NullLogger)?;
+    let app_sender = Application::try_new(&sender)?;
+    let app_receiver = Application::try_new(&receiver)?;
+    let store_sender = FileMessageStoreFactory::try_new(&settings_sender)?;
+    let store_receiver = FileMessageStoreFactory::try_new(&settings_receiver)?;
+
+    let kind = FixSocketServerKind::MultiThreaded;
+    let mut acceptor = Acceptor::try_new(
+        &settings_receiver,
+        &app_receiver,
+        &store_receiver,
+        &log,
+        kind,
+    )?;
+    let mut initiator =
+        Initiator::try_new(&settings_sender, &app_sender, &store_sender, &log, kind)?;
+    acceptor.start()?;
+    initiator.start()?;
+    let delivered = wait_until(Duration::from_secs(10), || receiver.contains("to receiver"));
+    initiator.stop()?;
+    acceptor.stop()?;
+
+    assert!(
+        delivered,
+        "the aborted message was resent and handled after the restart"
+    );
+    Ok(())
 }
 
 /// How the receiver answers inbound application messages in the reject tests.

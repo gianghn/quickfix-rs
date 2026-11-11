@@ -13,8 +13,13 @@
   threads (R-P0-4).
 - `Message::from_fix_message_t` is `unsafe`; pair it with the new `Message::into_fix_message_t`
   (R-P0-2).
+- `FixSocketServerKind::default()` is `MultiThreaded`; `SingleThreaded` is deprecated: QuickFIX's
+  plain socket classes crash at random in `stop()` (R-P0-8).
 
 ### Fixes
+
+- Dropping an `Acceptor` or `Initiator` while another thread sends no longer frees the C++ session
+  under that send: drop waits for in-flight sends, later sends get `SessionNotFound` (R-P0-6).
 
 - `MsgFromAppError::UnsupportedMessageType` now reaches the peer as a BusinessMessageReject
   (35=j, 380=3); it used to be dropped without a reply (R-P0-5).
