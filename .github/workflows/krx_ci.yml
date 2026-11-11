@@ -52,6 +52,8 @@ jobs:
   sanitizers:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # TSan is report-only until the C++ pin fixes FIX::Mutex's racy recursion (KRX_BUILD_PLAN.md, D6).
+    continue-on-error: ${{ matrix.sanitizer == 'thread' }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,8 +76,26 @@ jobs:
       - name: ASLR entropy for TSan
         if: matrix.sanitizer == 'thread'
         run: sudo sysctl -w vm.mmap_rnd_bits=28
-      - name: Tests under ${{ matrix.sanitizer }} sanitizer
-        run: scripts/san.sh ${{ matrix.sanitizer }}
+      - name: Tests under address sanitizer
+        if: matrix.sanitizer == 'address'
+        run: scripts/san.sh address
+      # Every race, not only the first, and a de-duplicated list in the job summary for triage.
+      - name: Tests under thread sanitizer (report-only)
+        if: matrix.sanitizer == 'thread'
+        env:
+          TSAN_OPTIONS: halt_on_error=0:second_deadlock_stack=1
+        run: |
+          set -o pipefail
+          scripts/san.sh thread --no-fail-fast 2>&1 | tee target/tsan.log
+      - name: TSan race summary
+        if: always() && matrix.sanitizer == 'thread'
+        run: |
+          {
+            echo "### ThreadSanitizer reports (distinct locations)"
+            echo '```'
+            grep -h '^SUMMARY: ThreadSanitizer' target/tsan.log | sed 's#/home/runner/work/[^ ]*/##' | sort | uniq -c | sort -rn
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # The socket tests are timing-sensitive; one green run proves little (R-P0-8).
   socket-loop:
