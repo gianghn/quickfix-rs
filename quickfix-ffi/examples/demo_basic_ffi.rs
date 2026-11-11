@@ -68,24 +68,27 @@ extern "C" fn custom_on_incoming(
     data: *const ffi::c_void,
     session_id: Option<FixSessionID_t>,
     msg: *const ffi::c_char,
+    len: u64,
 ) {
-    println!("custom_on_incoming: {data:?} {session_id:?} {msg:?}");
+    println!("custom_on_incoming: {data:?} {session_id:?} {msg:?} ({len} bytes)");
 }
 
 extern "C" fn custom_on_outgoing(
     data: *const ffi::c_void,
     session_id: Option<FixSessionID_t>,
     msg: *const ffi::c_char,
+    len: u64,
 ) {
-    println!("custom_on_outgoing: {data:?} {session_id:?} {msg:?}");
+    println!("custom_on_outgoing: {data:?} {session_id:?} {msg:?} ({len} bytes)");
 }
 
 extern "C" fn custom_on_event(
     data: *const ffi::c_void,
     session_id: Option<FixSessionID_t>,
     msg: *const ffi::c_char,
+    len: u64,
 ) {
-    println!("custom_on_event: {data:?} {session_id:?} {msg:?}");
+    println!("custom_on_event: {data:?} {session_id:?} {msg:?} ({len} bytes)");
 }
 
 const LOG_CALLBACKS: FixLogCallbacks_t = FixLogCallbacks_t {

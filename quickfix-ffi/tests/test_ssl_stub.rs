@@ -19,7 +19,13 @@ extern "C" fn on_msg(_: *const ffi::c_void, _: FixMessage_t, _: FixSessionID_t) 
 extern "C" fn on_msg_code(_: *const ffi::c_void, _: FixMessage_t, _: FixSessionID_t) -> i8 {
     CALLBACK_OK
 }
-extern "C" fn on_log(_: *const ffi::c_void, _: Option<FixSessionID_t>, _: *const ffi::c_char) {}
+extern "C" fn on_log(
+    _: *const ffi::c_void,
+    _: Option<FixSessionID_t>,
+    _: *const ffi::c_char,
+    _: u64,
+) {
+}
 
 const APP: FixApplicationCallbacks_t = FixApplicationCallbacks_t {
     onCreate: on_session,

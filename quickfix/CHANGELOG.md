@@ -26,11 +26,20 @@
 - Generated message crates: `TryFrom<quickfix::Message>` (error `FieldError`) replaces the
   `From` that asserted the MsgType; every field has a `try_get_*` returning `FieldError::Missing`
   or `FieldError::Invalid` instead of panicking; FIX booleans (`Y`/`N`) now parse (R-P0-9).
+- `Session::set_next_*_msg_seq_num` take `u64` and reject 0 and values above `i32::MAX`;
+  `get_expected_*_num` return `Result<u64, QuickFixError>` (R-P1-1).
+- The C log callbacks receive `(msg, len)`. `LogCallback` gains `on_incoming_bytes`,
+  `on_outgoing_bytes` and `on_event_bytes` with exact bytes; the default forwards lossy text to
+  the existing methods (R-P1-3).
 
 ### Fixes
 
 - Dropping an `Acceptor` or `Initiator` while another thread sends no longer frees the C++ session
   under that send: drop waits for in-flight sends, later sends get `SessionNotFound` (R-P0-6).
+- A failed binding call never reports an earlier call's error; `Session::lookup` of an unknown
+  session is `SessionNotFound` (R-P1-2).
+- `to_fix_bytes` / `to_fix_raw_bytes` keep every byte after an embedded NUL; new
+  `Message::get_field_bytes` reads data fields exactly (R-P1-3, R-P1-4).
 
 - `MsgFromAppError::UnsupportedMessageType` now reaches the peer as a BusinessMessageReject
   (35=j, 380=3); it used to be dropped without a reply (R-P0-5).

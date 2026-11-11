@@ -80,10 +80,13 @@ typedef struct ApplicationCallbacks {
   int8_t (*fromApp)(const void *data, const FixMessage_t *msg, const FixSessionID_t *session);
 } FixApplicationCallbacks_t;
 
+// `msg` is `len` bytes, not NUL-terminated text: FIX data fields may hold NULs and any encoding.
 typedef struct LogCallbacks {
-  void (*onIncoming)(const void *data, const FixSessionID_t *sessionId, const char *msg);
-  void (*onOutgoing)(const void *data, const FixSessionID_t *sessionId, const char *msg);
-  void (*onEvent)(const void *data, const FixSessionID_t *sessionId, const char *msg);
+  void (*onIncoming)(const void *data, const FixSessionID_t *sessionId, const char *msg,
+                     uint64_t len);
+  void (*onOutgoing)(const void *data, const FixSessionID_t *sessionId, const char *msg,
+                     uint64_t len);
+  void (*onEvent)(const void *data, const FixSessionID_t *sessionId, const char *msg, uint64_t len);
 } FixLogCallbacks_t;
 
 const char *Fix_getLastErrorMessage();
@@ -177,6 +180,7 @@ FixMessage_t *FixMessage_copy(const FixMessage_t *src);
 FixMessage_t *FixMessage_fromString(const char *text);
 FixMessage_t *FixMessage_fromStringAndDictionary(const char *text, const FixDataDictionary_t *dictionary);
 const char *FixMessage_getField(const FixMessage_t *obj, int32_t tag);
+const char *FixMessage_getFieldBytes(const FixMessage_t *obj, int32_t tag, uint64_t *len);
 int8_t FixMessage_setField(FixMessage_t *obj, int32_t tag, const char *value);
 int8_t FixMessage_removeField(FixMessage_t *obj, int32_t tag);
 int8_t FixMessage_addGroup(FixMessage_t *obj, const FixGroup_t *group);

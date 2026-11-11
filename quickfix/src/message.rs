@@ -3,9 +3,9 @@ use std::{ffi::CString, fmt, mem::ManuallyDrop};
 use quickfix_ffi::{
     FixMessage_addGroup, FixMessage_copy, FixMessage_copyGroup, FixMessage_copyHeader,
     FixMessage_copyTrailer, FixMessage_delete, FixMessage_fromString, FixMessage_getField,
-    FixMessage_getGroupRef, FixMessage_getHeaderRef, FixMessage_getStringLen,
-    FixMessage_getTrailerRef, FixMessage_new, FixMessage_readString, FixMessage_removeField,
-    FixMessage_setField, FixMessage_t,
+    FixMessage_getFieldBytes, FixMessage_getGroupRef, FixMessage_getHeaderRef,
+    FixMessage_getStringLen, FixMessage_getTrailerRef, FixMessage_new, FixMessage_readString,
+    FixMessage_removeField, FixMessage_setField, FixMessage_t,
 };
 
 use crate::{
@@ -70,6 +70,20 @@ impl Message {
     /// None today; the `Result` is kept so callers do not change when validation is added.
     pub unsafe fn from_fix_message_t(fix_message_t: FixMessage_t) -> Result<Self, QuickFixError> {
         Ok(Self(fix_message_t))
+    }
+
+    /// Read a field's bytes exactly as stored, NULs and non-UTF-8 bytes included (R-P1-3).
+    /// `get_field` stops at the first NUL; use this one for data fields (95/96) and audit.
+    pub fn get_field_bytes(&self, tag: i32) -> Option<Vec<u8>> {
+        let mut len = 0_u64;
+        let ptr = unsafe { FixMessage_getFieldBytes(self.0, tag, &mut len) };
+        if ptr.is_null() {
+            return None;
+        }
+        let len = usize::try_from(len).ok()?;
+        // SAFETY: the binding returned the field's buffer and its length; it lives in the message,
+        // which `&self` keeps alive and unchanged while we copy.
+        Some(unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) }.to_vec())
     }
 
     /// Try reading underlying struct buffer as a vector of bytes.

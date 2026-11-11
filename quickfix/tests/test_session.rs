@@ -147,8 +147,8 @@ fn test_session_set_next_sender_target_msg_seq_num() -> Result<(), QuickFixError
     let next_target_seq_num = 200;
     session.set_next_sender_msg_seq_num(next_sender_seq_num)?;
     session.set_next_target_msg_seq_num(next_target_seq_num)?;
-    assert_eq!(session.get_expected_sender_num(), next_sender_seq_num);
-    assert_eq!(session.get_expected_target_num(), next_target_seq_num);
+    assert_eq!(session.get_expected_sender_num(), Ok(next_sender_seq_num));
+    assert_eq!(session.get_expected_target_num(), Ok(next_target_seq_num));
     // Stop everything
     socket_receiver.stop()?;
     socket_sender.stop()?;
