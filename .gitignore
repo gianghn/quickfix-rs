@@ -1,5 +1,7 @@
 # Build dir
 target
+# CMake build folders (quickfix-ffi, its examples and quickfix-bind)
+build/
 
 # IDE
 .vscode
