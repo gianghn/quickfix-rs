@@ -4,8 +4,8 @@
 //! the item removes the attribute.
 
 use quickfix::{DataDictionary, FieldMap, Message};
-use quickfix_msgkrx::field_types::Side;
-use quickfix_msgkrx::{field_id, NewOrderSingle, Quote};
+use quickfix_msgkrx::field_types::{ExecType, Side};
+use quickfix_msgkrx::{field_id, ExecutionReport, FieldError, NewOrderSingle, Quote};
 
 const SOH: char = '\u{1}';
 const KRX_DICTIONARY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/FIX44KRX.xml");
@@ -129,7 +129,7 @@ fn get_field_reads_krx_header_and_body() {
 
 #[test]
 fn new_order_single_getters_read_required_fields() {
-    let order = NewOrderSingle::from(build(&krx_message("D", &[], NEW_ORDER_SINGLE)));
+    let order = NewOrderSingle::try_from(build(&krx_message("D", &[], NEW_ORDER_SINGLE))).unwrap();
     assert_eq!(order.get_cl_ord_id(), "ORD-0001");
     assert_eq!(order.get_symbol(), "VNM");
     assert_eq!(order.get_side(), Side::Buy);
@@ -151,7 +151,7 @@ fn with_group_reads_parties_of_quote() {
 
 #[test]
 fn iter_no_party_i_ds_reads_parties_and_nested_sub_ids() {
-    let quote = Quote::from(build(&krx_message("S", &[], QUOTE)));
+    let quote = Quote::try_from(build(&krx_message("S", &[], QUOTE))).unwrap();
     assert_eq!(quote.no_party_i_ds_len(), 2);
 
     let parties: Vec<_> = quote.iter_no_party_i_ds().collect();
@@ -174,18 +174,95 @@ fn iter_no_party_i_ds_reads_parties_and_nested_sub_ids() {
 
 #[test]
 fn get_poss_dup_flag_returns_none_when_43_is_absent() {
-    let mut order = NewOrderSingle::from(build(&krx_message("D", &[], NEW_ORDER_SINGLE)));
+    let mut order =
+        NewOrderSingle::try_from(build(&krx_message("D", &[], NEW_ORDER_SINGLE))).unwrap();
     assert_eq!(order.header().get_poss_dup_flag(), None);
 }
 
 #[test]
-#[ignore = "red until R-P0-9: FIX booleans are Y/N, the generator parses them with str::parse::<bool>"]
 fn get_poss_dup_flag_returns_true_when_43_is_y() {
     let text = krx_message(
         "D",
         &[(43, "Y"), (122, "20261111-02:14:00.000")],
         NEW_ORDER_SINGLE,
     );
-    let mut order = NewOrderSingle::from(build(&text));
+    let mut order = NewOrderSingle::try_from(build(&text)).unwrap();
     assert_eq!(order.header().get_poss_dup_flag(), Some(true));
+    assert_eq!(order.header().try_get_poss_dup_flag(), Ok(Some(true)));
+}
+
+/// An ExecutionReport as a KRX member receives it, parsed without dictionary validation so the
+/// tests can send what the dictionary would reject (R-P0-11 is about the dictionary itself).
+const EXECUTION_REPORT: &[(i32, &str)] = &[
+    (37, "KRX-77"),
+    (11, "ORD-0001"),
+    (17, "EXEC-1"),
+    (150, "0"),
+    (39, "0"),
+    (55, "VNM"),
+    (54, "1"),
+    (38, "1000"),
+    (151, "1000"),
+    (14, "0"),
+];
+
+fn execution_report(replace: &[(i32, &str)], remove: &[i32]) -> ExecutionReport {
+    let body: Vec<(i32, &str)> = EXECUTION_REPORT
+        .iter()
+        .filter(|(tag, _)| !remove.contains(tag))
+        .map(|&(tag, value)| {
+            let new = replace.iter().find(|(t, _)| *t == tag).map(|(_, v)| *v);
+            (tag, new.unwrap_or(value))
+        })
+        .collect();
+    let msg =
+        Message::try_from_text(&krx_message("8", &[], &body)).expect("execution report parses");
+    ExecutionReport::try_from(msg).expect("is an execution report")
+}
+
+#[test]
+fn try_get_exec_type_returns_value_when_150_is_known() {
+    assert_eq!(
+        execution_report(&[], &[]).try_get_exec_type(),
+        Ok(ExecType::New)
+    );
+}
+
+#[test]
+fn try_get_exec_type_returns_invalid_when_150_is_unknown() {
+    // 150=C (Expired) is not in FIX44KRX.xml's ExecType enum; the getter used to panic.
+    let report = execution_report(&[(150, "C")], &[]);
+    assert_eq!(report.try_get_exec_type(), Err(FieldError::Invalid(150)));
+}
+
+#[test]
+fn try_get_exec_id_returns_missing_when_17_is_absent() {
+    let report = execution_report(&[], &[17]);
+    assert_eq!(report.try_get_exec_id(), Err(FieldError::Missing(17)));
+    assert_eq!(report.try_get_order_id().as_deref(), Ok("KRX-77"));
+}
+
+#[test]
+fn try_get_optional_field_tells_absent_from_invalid() {
+    let report = execution_report(&[], &[]);
+    assert_eq!(report.try_get_ord_rej_reason(), Ok(None));
+    let msg = Message::try_from_text(&krx_message("8", &[], &[(103, "not-a-number")])).unwrap();
+    let report = ExecutionReport::try_from(msg).unwrap();
+    assert_eq!(
+        report.try_get_ord_rej_reason(),
+        Err(FieldError::Invalid(103))
+    );
+}
+
+#[test]
+fn try_from_message_returns_error_when_msg_type_differs() {
+    let msg = Message::try_from_text(&krx_message("8", &[], EXECUTION_REPORT)).unwrap();
+    assert_eq!(
+        NewOrderSingle::try_from(msg).err(),
+        Some(FieldError::Invalid(35))
+    );
+    assert_eq!(
+        NewOrderSingle::try_from(Message::new()).err(),
+        Some(FieldError::Missing(35))
+    );
 }

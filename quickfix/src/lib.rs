@@ -126,7 +126,7 @@ mod view;
 
 mod utils;
 
-use std::ffi::{CString, NulError};
+use std::ffi::CString;
 
 pub use acceptor::Acceptor;
 pub use application::{
@@ -197,14 +197,36 @@ pub trait SessionContainer {
 /// This is why it exists.
 pub trait IntoFixValue {
     /// Convert implementer to a printable null terminated FIX value.
-    fn into_fix_value(self) -> Result<CString, NulError>;
+    ///
+    /// # Errors
+    ///
+    /// `QuickFixError::InvalidArgument` when the value has an interior NUL or has no FIX text
+    /// (a NaN or infinite float).
+    fn into_fix_value(self) -> Result<CString, QuickFixError>;
 }
 
 macro_rules! impl_into_fix_value {
     ($t:ty) => {
         impl IntoFixValue for $t {
-            fn into_fix_value(self) -> Result<CString, NulError> {
-                CString::new(self.to_string())
+            fn into_fix_value(self) -> Result<CString, QuickFixError> {
+                Ok(CString::new(self.to_string())?)
+            }
+        }
+    };
+}
+
+// `NaN`, `inf` and `-inf` used to reach the wire as `44=NaN` (R-P0-10). Prices that are computed,
+// not parsed, should be written as decimal strings: f64 arithmetic prints `0.30000000000000004`.
+macro_rules! impl_into_fix_value_float {
+    ($t:ty) => {
+        impl IntoFixValue for $t {
+            fn into_fix_value(self) -> Result<CString, QuickFixError> {
+                if !self.is_finite() {
+                    return Err(QuickFixError::invalid_argument(format!(
+                        "{self} has no FIX representation"
+                    )));
+                }
+                Ok(CString::new(self.to_string())?)
             }
         }
     };
@@ -222,25 +244,25 @@ impl_into_fix_value!(i32);
 impl_into_fix_value!(i64);
 impl_into_fix_value!(i128);
 impl_into_fix_value!(isize);
-impl_into_fix_value!(f32);
-impl_into_fix_value!(f64);
+impl_into_fix_value_float!(f32);
+impl_into_fix_value_float!(f64);
 
 impl IntoFixValue for String {
-    fn into_fix_value(self) -> Result<CString, NulError> {
-        CString::new(self)
+    fn into_fix_value(self) -> Result<CString, QuickFixError> {
+        Ok(CString::new(self)?)
     }
 }
 
 impl IntoFixValue for &str {
-    fn into_fix_value(self) -> Result<CString, NulError> {
-        CString::new(self)
+    fn into_fix_value(self) -> Result<CString, QuickFixError> {
+        Ok(CString::new(self)?)
     }
 }
 
 impl IntoFixValue for bool {
-    fn into_fix_value(self) -> Result<CString, NulError> {
+    fn into_fix_value(self) -> Result<CString, QuickFixError> {
         // Check reference here: https://www.onixs.biz/fix-dictionary/4.3/tagNum_575.html
-        CString::new(if self { "Y" } else { "N" })
+        Ok(CString::new(if self { "Y" } else { "N" })?)
     }
 }
 

@@ -86,8 +86,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 4 | `krx/golive-p4` | PR #5 | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
 | 5 | `krx/golive-p5` | PR #7 | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
 | 6 | `krx/golive-p6` | PR #8 | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
-| 7 | `krx/golive-p7` | done, PR pending | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
-| 8 | `krx/golive-p8` | not started | |
+| 7 | `krx/golive-p7` | PR #9 | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
+| 8 | `krx/golive-p8` | done, PR pending | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
 | 9 | `krx/golive-p9` | not started | |
 | 10 | `krx/golive-p10` | not started | |
 
@@ -259,3 +259,30 @@ unchanged (their closures infer the new types); `scripts/san.sh address` exit 0;
 `FieldMap` pointer: they only touch the `FieldMap` base, so ASan is clean, but strictly it is a
 `Group*` that points to a `FieldMap`. A `FixFieldMap_*` C API would remove that; not done here.
 **Decisions taken:** one generic `Borrowed<T>` instead of four hand-written view types.
+
+### Handover 8 — 2026-11-12
+**Built:** R-P0-9 in the generator. Each crate gets `FieldError { Missing(tag), Invalid(tag) }`
+and `FromFixStr` (booleans parse as FIX `Y`/`N`; enums through `from_const_bytes`; numbers and
+strings through `FromStr`). Every field gets `try_get_*`: required fields return
+`Result<T, FieldError>`, optional ones `Result<Option<T>, FieldError>`, so a present but unknown
+value (`150=C`) is `Invalid`, not a silent `None`. The old getters stay, built on `try_get_*`
+(required ones still panic, now documented with `# Panics`). `TryFrom<quickfix::Message>`
+(error `FieldError`, `Missing(35)` / `Invalid(35)`) replaces the asserting `From`; the message
+cracker builds the structs directly. R-P0-10: `IntoFixValue` for `f32`/`f64` rejects NaN and
+infinities; the trait's error type is `QuickFixError` (was `NulError`) so it can say why.
+**Red → green:** KRX suite: `get_poss_dup_flag_returns_true_when_43_is_y` (ignored since phase 2,
+`None` for `43=Y`) enabled and green; new `try_get_exec_type_returns_value_when_150_is_known`,
+`..._invalid_when_150_is_unknown`, `try_get_exec_id_returns_missing_when_17_is_absent`,
+`try_get_optional_field_tells_absent_from_invalid`,
+`try_from_message_returns_error_when_msg_type_differs` did not compile before (no API) and are
+green; `set_field_returns_error_when_float_is_not_finite` accepted NaN before, rejects it now.
+KRX suite 13/13, nothing ignored.
+**Checks:** `cargo test --workspace` (macOS) green, no warnings; all generated crates (FIX 4.0 to
+5.0, KRX) build; `scripts/san.sh address` exit 0; fmt ok.
+**Not done:** a decimal price type in the generator (the go-live plan's "optionally"); prices stay
+`f64` aliases. The tick property test was dropped: the house rule bans `f64` money even in tests,
+and the gateway writes prices as decimal strings (Phase 0). Unknown-enum values are only readable
+as raw strings (`get_field`); adding an `Unknown(String)` variant to every enum would be a larger
+API change.
+**Breaking for the gateway:** `From<Message>` for generated messages is gone, use `try_from`;
+custom `IntoFixValue` impls return `QuickFixError`.

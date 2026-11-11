@@ -92,6 +92,54 @@ fn generate_root(output: &mut String, begin_string: &str) {
 
             impl std::error::Error for FixParseError {{}}
 
+            /// Why a field could not be read (R-P0-9: the getters used to panic instead).
+            #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+            pub enum FieldError {{
+                /// The tag is not in the message.
+                Missing(i32),
+                /// The tag is there but its value does not parse as the field's type.
+                Invalid(i32),
+            }}
+
+            impl std::fmt::Display for FieldError {{
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{
+                    match self {{
+                        Self::Missing(tag) => write!(f, "FIX field {{tag}} is missing"),
+                        Self::Invalid(tag) => write!(f, "FIX field {{tag}} has an invalid value"),
+                    }}
+                }}
+            }}
+
+            impl std::error::Error for FieldError {{}}
+
+            /// Parse a FIX field value. Unlike `FromStr`, booleans are FIX `Y`/`N`.
+            pub trait FromFixStr: Sized {{
+                /// `None` when `s` is not a valid value of the type.
+                fn from_fix_str(s: &str) -> Option<Self>;
+            }}
+
+            impl FromFixStr for bool {{
+                fn from_fix_str(s: &str) -> Option<Self> {{
+                    match s {{
+                        "Y" => Some(true),
+                        "N" => Some(false),
+                        _ => None,
+                    }}
+                }}
+            }}
+
+            macro_rules! impl_from_fix_str {{
+                ($($t:ty),*) => {{ $(
+                    impl FromFixStr for $t {{
+                        fn from_fix_str(s: &str) -> Option<Self> {{
+                            s.parse().ok()
+                        }}
+                    }}
+                )* }};
+            }}
+
+            impl_from_fix_str!(i32, i64, i128, u32, f64, String);
+
             pub struct GroupIterator<'a, T, I> {{
                 parent: &'a T,
                 clone_group_func: fn(&'a T, usize) -> Option<I>,
@@ -233,8 +281,8 @@ fn generate_field_type_values(output: &mut String, field_spec: &FieldSpec) {
     // Generate `IntoFixValue`.
     output.push_str(&format!(
         r#" impl quickfix::IntoFixValue for {type_name} {{
-                fn into_fix_value(self) -> Result<std::ffi::CString, std::ffi::NulError> {{
-                    std::ffi::CString::new(match self {{
+                fn into_fix_value(self) -> Result<std::ffi::CString, quickfix::QuickFixError> {{
+                    Ok(std::ffi::CString::new(match self {{
                     "#
     ));
     for value in &field_spec.values {
@@ -245,12 +293,23 @@ fn generate_field_type_values(output: &mut String, field_spec: &FieldSpec) {
         ));
     }
     output.push_str(
-        r#"         })
+        r#"         })?)
                 }
             }
 
             "#,
     );
+
+    // Generate `FromFixStr`: unknown values are an error, not a silent `None` (R-P0-9).
+    output.push_str(&format!(
+        r#" impl crate::FromFixStr for {type_name} {{
+                fn from_fix_str(s: &str) -> Option<Self> {{
+                    Self::from_const_bytes(s.as_bytes()).ok()
+                }}
+            }}
+
+            "#
+    ));
 }
 
 fn generate_field_type_alias(output: &mut String, field_spec: &FieldSpec) {
@@ -434,15 +493,18 @@ fn generate_message(output: &mut String, message: &MessageSpec) {
                 }}
             }}
 
-            impl From<quickfix::Message> for {struct_name} {{
-                fn from(input: quickfix::Message) -> Self {{
-                    assert_eq!(
-                        input
-                            .with_header(|h| h.get_field(field_id::MSG_TYPE))
-                            .and_then(|x| crate::field_types::MsgType::from_const_bytes(x.as_bytes()).ok()),
-                        Some(Self::MSG_TYPE),
-                    );
-                    Self {{ inner: input }}
+            // TryFrom, not From: a message of another type used to panic here (R-P0-9).
+            impl TryFrom<quickfix::Message> for {struct_name} {{
+                type Error = crate::FieldError;
+
+                fn try_from(input: quickfix::Message) -> Result<Self, Self::Error> {{
+                    let raw = input
+                        .with_header(|h| h.get_field(field_id::MSG_TYPE))
+                        .ok_or(crate::FieldError::Missing(field_id::MSG_TYPE))?;
+                    if raw != Self::MSG_TYPE_BYTES {{
+                        return Err(crate::FieldError::Invalid(field_id::MSG_TYPE));
+                    }}
+                    Ok(Self {{ inner: input }})
                 }}
             }}
 
@@ -652,26 +714,58 @@ fn generate_field_getter(
     let field_type = format!("crate::field_types::{field_name}");
     let field_id = format_field_id(field_name);
 
-    // Generate code.
+    // Generate code: a fallible `try_get_*` (R-P0-9), and the historical getter on top of it.
     if field_required {
-        // Generate a getter that `panic()` if field is not set.
         output.push_str(&format!(
-            r#" #[inline(always)]
+            r#" /// Read the required field.
+                ///
+                /// # Errors
+                ///
+                /// `FieldError::Missing` when the tag is absent, `FieldError::Invalid` when its value
+                /// does not parse.
+                #[inline(always)]
+                pub fn try_{fun_name}(&self) -> Result<{field_type}, crate::FieldError> {{
+                    let raw = self.{call_get_prefix}get_field({field_id}){call_suffix}
+                        .ok_or(crate::FieldError::Missing({field_id}))?;
+                    <{field_type} as crate::FromFixStr>::from_fix_str(&raw)
+                        .ok_or(crate::FieldError::Invalid({field_id}))
+                }}
+
+                /// Read the required field.
+                ///
+                /// # Panics
+                ///
+                /// When the field is missing or invalid; use `try_{fun_name}` on input you do not
+                /// control.
+                #[inline(always)]
                 pub fn {fun_name}(&self) -> {field_type} {{
-                    self.{call_get_prefix}get_field({field_id}){call_suffix}
-                       .and_then(|x| x.parse().ok())
-                       .expect("{field_id} is required but it is missing")
+                    self.try_{fun_name}()
+                       .expect("{field_id} is required but it is missing or invalid")
                 }}
 
                 "#
         ));
     } else {
-        // Generate an optional getter.
         output.push_str(&format!(
-            r#" #[inline(always)]
-                pub fn {fun_name}(&self) -> Option<{field_type}> {{
+            r#" /// Read the optional field: `Ok(None)` when absent.
+                ///
+                /// # Errors
+                ///
+                /// `FieldError::Invalid` when the tag is present but its value does not parse.
+                #[inline(always)]
+                pub fn try_{fun_name}(&self) -> Result<Option<{field_type}>, crate::FieldError> {{
                     self.{call_get_prefix}get_field({field_id}){call_suffix}
-                       .and_then(|x| x.parse().ok())
+                        .map(|raw| {{
+                            <{field_type} as crate::FromFixStr>::from_fix_str(&raw)
+                                .ok_or(crate::FieldError::Invalid({field_id}))
+                        }})
+                        .transpose()
+                }}
+
+                /// Read the optional field; `None` when absent **or invalid** (see `try_{fun_name}`).
+                #[inline(always)]
+                pub fn {fun_name}(&self) -> Option<{field_type}> {{
+                    self.try_{fun_name}().ok().flatten()
                 }}
 
                 "#
@@ -802,7 +896,7 @@ fn generate_message_cracker(output: &mut String, messages: &[MessageSpec]) {
         let message_type = &message.msg_type;
 
         output.push_str(&format!(
-            "  Some(\"{message_type}\") => Ok(Self::{struct_name}(input.into())),\n"
+            "  Some(\"{message_type}\") => Ok(Self::{struct_name}({struct_name} {{ inner: input }})),\n"
         ));
     }
     output.push_str(
