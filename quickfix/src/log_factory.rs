@@ -16,10 +16,18 @@ use crate::{
 
 /// Log event that can occurs in quickfix library.
 ///
-/// Each callback will be called based on session / socket lifecycle.
+/// Each callback will be called based on session / socket lifecycle, from any QuickFIX thread,
+/// so implementations must be `Send + Sync` (R-P0-4):
+///
+/// ```compile_fail
+/// use std::cell::Cell;
+/// struct LineCounter(Cell<u64>);
+/// impl quickfix::LogCallback for LineCounter {}
+/// ```
+///
 /// A panic in any of these methods aborts the process: a log that silently loses lines is an
 /// audit-trail hole.
-pub trait LogCallback {
+pub trait LogCallback: Send + Sync {
     /// New incoming messages is available.
     fn on_incoming(&self, _session_id: Option<&SessionId>, _msg: &str) {}
 

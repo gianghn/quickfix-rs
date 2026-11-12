@@ -4,7 +4,8 @@ use quickfix::*;
 
 #[derive(Debug)]
 pub struct FixRecorder {
-    expected_session_id: SessionId,
+    // The repr, not a SessionId: callbacks must be Send + Sync and a SessionId is a raw pointer.
+    expected_session_id: String,
     session_created: AtomicUsize,
     is_logged_in: AtomicBool,
     sent_admin: AtomicUsize,
@@ -16,7 +17,7 @@ pub struct FixRecorder {
 impl FixRecorder {
     pub fn new(expected_session_id: SessionId) -> Self {
         Self {
-            expected_session_id,
+            expected_session_id: expected_session_id.to_repr(),
             session_created: AtomicUsize::new(0),
             is_logged_in: AtomicBool::new(false),
             sent_admin: AtomicUsize::new(0),
@@ -107,6 +108,6 @@ pub struct MsgCounter {
     pub recv: usize,
 }
 
-fn assert_session_id_equals(a: &SessionId, b: &SessionId) {
-    assert_eq!(a.to_repr(), b.to_repr());
+fn assert_session_id_equals(expected: &str, actual: &SessionId) {
+    assert_eq!(expected, actual.to_repr());
 }

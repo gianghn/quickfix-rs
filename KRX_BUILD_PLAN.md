@@ -83,8 +83,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 1 | `krx/golive-p1` | PR #2 | ASan: 6 overflow tests + 11 leaking tests → leaks fixed, 6 on known-red (R-P0-7); TSan unverified until CI |
 | 2 | `krx/golive-p2` | PR #3 | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
 | 3 | `krx/golive-p3` | PR #4 | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
-| 4 | `krx/golive-p4` | done, PR pending | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
-| 5 | `krx/golive-p5` | not started | |
+| 4 | `krx/golive-p4` | PR #5 | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
+| 5 | `krx/golive-p5` | done, PR pending | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
 | 6 | `krx/golive-p6` | not started | |
 | 7 | `krx/golive-p7` | not started | |
 | 8 | `krx/golive-p8` | not started | |
@@ -185,3 +185,28 @@ and `Debug` on it read garbage (`with_group_reports_field_id_and_delim_of_the_en
 the generator keeps `clone_group` (now correct) instead of switching to `with_group`.
 **Decisions taken:** delimiter of a copied entry = its first field, which is what QuickFIX's own
 ordering puts first.
+
+### Handover 5 — 2026-11-12
+**Built:** R-P0-4: `ApplicationCallback: Send + Sync`, `LogCallback: Send + Sync`. R-P0-2:
+`Message::from_fix_message_t` is `unsafe fn` with a `# Safety` contract; new
+`Message::into_fix_message_t(self)` releases ownership for it. The test `FixRecorder` keeps the
+expected session as its repr string (a `SessionId` is a raw pointer, so not `Send + Sync`).
+**Red → green:** 3 `compile_fail` doctests (`from_fix_message_t` without `unsafe`; an
+application and a logger holding a `Cell`) compiled before, and fail to compile now; the ASan
+round trip `into_fix_message_t_then_from_fix_message_t_round_trips_ownership` did not compile
+(no `into_fix_message_t`) and is green and ASan-clean now.
+**Checks:** `cargo test --workspace` (macOS) green, doctests 4/4; `scripts/san.sh address`
+(Linux) exit 0; fmt ok.
+**Breaking for the gateway:** its application and log types must be `Send + Sync` (the gateway's
+own Phase 0 compile-time assertion asks the same); every `from_fix_message_t` call needs an
+`unsafe` block that states where the pointer came from.
+**Not done:** the go-live plan's "TSan run with one app shared by two MultiThreaded sessions":
+TSan is report-only (D6) and the C++ races below drown it; it comes back with the C++ pin bump.
+
+#### TSan inventory, first full CI run (PR #5, 114 reports, report-only per D6)
+All in the C++ library; none on the Rust side. For the C++ fork:
+| Location | What races | Seen in |
+|---|---|---|
+| `Mutex.h:62/63/78` `FIX::Mutex::lock/unlock` | recursive lock reads its owner without synchronisation | every session test (62 reports) |
+| `SocketAcceptor.cpp:130` `onStart` / `SocketServer::~SocketServer` vs `close()` | plain acceptor freed while `stop()` closes it (R-P2-3) | SingleThreaded tests |
+| `SessionState.h:59-68` `receivedLogon`, `sentLogon`, `enabled`, `lastSentTime` | logon flags and timestamps written by `send`/logon on one thread, read by `next`/`isLoggedOn` on another | MultiThreaded too (`test_callback_failures`) |
