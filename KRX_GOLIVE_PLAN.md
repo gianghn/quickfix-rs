@@ -14,6 +14,14 @@ File:line references are at `1b42bc5`.
 **Verdict: not ready.** The happy path is clean (1.62 M orders in a chaos run with no loss,
 duplicates or reordering; 0 RustSec advisories). The failure paths are not: 13 P0, 8 P1, 7 P2.
 
+**Status, 12 November 2026:** `krx/main` at 0.3.0 (`4dcb99f`) carries the fixes for 10 of the
+13 P0s, 5 of the 8 P1s and 3 of the 7 P2s ([x] below; details, tests and handovers in
+`KRX_BUILD_PLAN.md`). Still open in this repo: R-P0-13's regression test, the rest of R-P1-5 and
+the R-P1-7 chaos run. Waiting outside it: R-P0-11 (member spec), R-P0-12 and R-P0-13 (C++ fork),
+R-P2-3/4/5/6, Phase 0 (gateway) and Phase 4 (evidence). The CI TSan job is report-only (D6):
+all 170 reports in its latest run have C++ frames on both sides (`FIX::Mutex`, `SessionState`
+flags and its `DateTime` last-sent/received times), none in the Rust layer.
+
 ## How the work is split
 
 | Who | What |
@@ -55,7 +63,7 @@ Listed here because they decide which P0s are reachable today. Track them in the
 
 Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI jobs green here.
 
-- [ ] **R-P0-1 Panic in a callback is reported as success.** 3,504 of 3,504 panicked inbound messages
+- [x] **R-P0-1 Panic in a callback is reported as success.** 3,504 of 3,504 panicked inbound messages
       were lost; `to_app` panics were sent; a panicking `on_logon` left the session up.
       Where: `quickfix/src/application.rs:47-53, 155-238`, `quickfix/src/log_factory.rs:56-96`.
       Fix: `Err(_) => std::process::abort()` in every callback (not `0`), so it no longer depends on the
@@ -63,36 +71,36 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       Test: two-session FileStore death test injecting panics in `from_app`, `to_app`, `to_admin`,
       `on_logon` and each log callback: process aborts, next target seqnum did not advance, the peer's
       resend delivers the message after restart. (Also the first test of `panic = "abort"`: still untested.)
-- [ ] **R-P0-5 `MsgFromAppError::UnsupportedMessageType` (-6) is dropped silently.**
+- [x] **R-P0-5 `MsgFromAppError::UnsupportedMessageType` (-6) is dropped silently.**
       Where: `quickfix-ffi/quickfix-bind/src/quickfix_bind.cpp:285-301`, `application.rs:72-80`.
       Fix: `case CALLBACK_RESULT_UNSUPPORTED_MESSAGE_TYPE: throw UnsupportedMessageType();` and a
       fail-closed `default:` for unknown non-zero codes in both switches.
       Test: end-to-end test per `MsgFromAppError`, `MsgFromAdminError` and `DoNotSend` variant; for -6
       the peer gets 35=j with 380=3.
-- [ ] **R-P0-7 `clone_group` reads past the heap** (every generated group getter).
+- [x] **R-P0-7 `clone_group` reads past the heap** (every generated group getter).
       Where: `quickfix_bind.cpp:986-1021` (`FixMessage_copyGroup`, `FixHeader_copyGroup`,
       `FixGroup_copyGroup`, `FixMessage_getGroupRef`); generator `quickfix-msg-gen/src/lib.rs:724-748`.
       Fix: build `new Group(tag, delim)` and assign the `FieldMap`; `getGroupRef` returns `FieldMap*`;
       generator iterates with `with_group` (borrow) instead of cloning.
       Test: `test_message_group` clean under ASan; ASan test reading every group of a captured KRX message.
-- [ ] **R-P0-6 Drop of Initiator/Acceptor while another thread is in `send_to_target` = use-after-free.**
+- [x] **R-P0-6 Drop of Initiator/Acceptor while another thread is in `send_to_target` = use-after-free.**
       Where: `quickfix/src/session.rs:15-18`, `initiator.rs`, `acceptor.rs:116-126`.
       Fix: process-wide `RwLock` gate (sends take read, `Drop` takes write before `*_delete`), or send
       only through a borrow of the container.
       Test: harness chaos "drop+recreate initiator while sending" under ASan, 50 seeded runs, zero reports.
-- [ ] **R-P0-8 `SingleThreaded` `stop()` segfaults; our tests use it** (6 of 10 `cargo test` runs on loaded Linux).
+- [x] **R-P0-8 `SingleThreaded` `stop()` segfaults; our tests use it** (6 of 10 `cargo test` runs on loaded Linux).
       Where: `quickfix/src/lib.rs:279-316` (default kind), `lib.rs:85-90` (doc example),
       `quickfix/tests/utils/checker.rs:41-58`, `test_send_receive.rs:66`, `test_session.rs`, `test_socket.rs`.
       Fix: tests on MultiThreaded (or both kinds); wait for both sides to log on in `checker.rs:58` and
       `test_send_receive.rs:66`; make `MultiThreaded` the default or `#[deprecated]` `SingleThreaded`;
       settle the pending threading-flag decision in `KRX_FORK_NOTES.md`.
       Test: `run_tests_loop.sh 50` on Linux under load, zero failures.
-- [ ] **R-P0-2 Safe `Message::from_fix_message_t` adopts any raw pointer** (fork-added, no tests).
+- [x] **R-P0-2 Safe `Message::from_fix_message_t` adopts any raw pointer** (fork-added, no tests).
       Where: `quickfix/src/message.rs:36-44`, Drop at `:277-281`.
       Fix: `unsafe fn` with a written ownership contract, or `into_raw(self)` + `unsafe from_raw`;
       reject null; copy with `FixMessage_copy` where a value is enough.
       Test: `compile_fail` doctest for the safe call; ASan test of new → `into_raw` → `from_raw` → drop.
-- [ ] **R-P0-4 `ApplicationCallback` and `LogCallback` lack `Send + Sync`.**
+- [x] **R-P0-4 `ApplicationCallback` and `LogCallback` lack `Send + Sync`.**
       Where: `application.rs:83-87, 128-143`, `log_factory.rs:18-28`.
       Fix: `pub trait ApplicationCallback: Send + Sync`, same for `LogCallback` (breaking, and correct).
       Test: `compile_fail` doctest with a `Cell` member; TSan run with one app shared by two MultiThreaded sessions.
@@ -103,18 +111,18 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 
 ## Phase 2: API soundness and the KRX crate (sprint 2)
 
-- [ ] **R-P0-3 `&mut Message/Header/Trailer/Group` over borrowed C++ objects can be moved out** (`mem::take`).
+- [x] **R-P0-3 `&mut Message/Header/Trailer/Group` over borrowed C++ objects can be moved out** (`mem::take`).
       Where: `application.rs:182-206`, `message.rs:144-224`.
       Fix: borrowed view types (`MessageMut<'a>`, `HeaderMut<'a>`, `TrailerMut<'a>`, `GroupMut<'a>`)
       implementing `FieldMap` without `Drop`/`Default`, as the generator already does (`quickfix-msg-gen/src/lib.rs:398-418`).
       Test: `repro swap_header` and `swap_to_app` become `compile_fail` doctests; ASan callback suite clean.
-- [ ] **R-P0-9 Generated KRX getters panic; BOOLEAN fields never parse** (142 `.expect` getters,
+- [x] **R-P0-9 Generated KRX getters panic; BOOLEAN fields never parse** (142 `.expect` getters,
       `From<Message>` asserts MsgType, `"Y".parse::<bool>()` fails for all 31 bool fields incl. 43/97).
       Where: `quickfix-msg-gen/src/lib.rs:430-440, 540-546, 656-666`.
       Fix: generate `try_get_<field>() -> Result<T, FieldError>` and `TryFrom<Message>`; FIX Y/N bool parser.
       Test: new `quickfix-msgkrx/tests` parsing captured KRX 35=D and 35=8 incl. `43=Y`, unknown enum
       values (`150=C`) and missing required tags: no panic, correct `Result`s.
-- [ ] **R-P0-10 Prices and quantities are `f64`** (`44=0.30000000000000004`, `44=NaN` accepted).
+- [x] **R-P0-10 Prices and quantities are `f64`** (`44=0.30000000000000004`, `44=NaN` accepted).
       Where: `quickfix-msg-gen/src/lib.rs:257-300`, `quickfix/src/lib.rs:203-216`.
       Fix: reject NaN/inf in `IntoFixValue for f64`; optionally emit a decimal type from the generator.
       Test: property test over 10/50/100 VND ticks and derivative/bond decimals: wire string equals decimal string.
@@ -128,20 +136,20 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       went out later as PossDup). Where: `session.rs:13-18, 58-61`, `quickfix_bind.cpp:1069-1077`.
       Fix: once C++ P0-6 makes the bool truthful, return `SendOutcome { Sent, Stored, Dropped }`.
       Test: send during disconnect/reconnect; stale order is gap-filled, never reaches the simulator.
-- [ ] **R-P1-1 Seqnum APIs return error codes as seqnums and take any `i32`** (fork-added).
+- [x] **R-P1-1 Seqnum APIs return error codes as seqnums and take any `i32`** (fork-added).
       Where: `session.rs:73-89`, `quickfix_bind.cpp:1131-1139`.
       Fix: `Result<u64, QuickFixError>`; take `u64`, reject < 1; take the session lock or document "logged out only".
       Test: MultiThreaded + FileStore: set 100 → next 34=100, persists over restart; `set(0)` → `Err`;
       4-thread send race while setting shows no duplicate or skipped 34.
-- [ ] **R-P1-2 Stale thread-local last-error; error buffer leaks per thread.**
+- [x] **R-P1-2 Stale thread-local last-error; error buffer leaks per thread.**
       Where: `quickfix_bind.cpp:191-219`, `error.rs:141-199`, `session.rs:36-44`.
       Fix: clear the code on entry to every wrapper; `lookup` → `None` maps to `SessionNotFound`; `thread_local std::string`.
       Test: `repro stale_error` asserts `SessionNotFound`; LSan clean.
-- [ ] **R-P1-3 Log callback replaces non-UTF-8 text with a placeholder and truncates at NUL** (audit-trail holes).
+- [x] **R-P1-3 Log callback replaces non-UTF-8 text with a placeholder and truncates at NUL** (audit-trail holes).
       Where: `quickfix/src/utils.rs:8-19`, `quickfix_bind.cpp:326-342`.
       Fix: pass `(ptr, len)`; callbacks get `&[u8]` or `Cow<str>`; add `get_field_bytes`.
       Test: raw peer sends `58=caf\xE9` and `58=ab\0cd`; log text and `get_field_bytes` match the wire.
-- [ ] **R-P1-4 `to_fix_bytes`/`to_fix_raw_bytes` zero-fill after an embedded NUL** (`strncpy`).
+- [x] **R-P1-4 `to_fix_bytes`/`to_fix_raw_bytes` zero-fill after an embedded NUL** (`strncpy`).
       Where: `quickfix_bind.cpp:844-859`, `message.rs:55-108`.
       Fix: `memcpy(buffer, value.data(), value.size())`; `to_fix_string` returns `Result`.
       Test: parse `95=3|96=a\0b` and compare `to_fix_bytes()` byte for byte with the wire.
@@ -156,14 +164,14 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       by env opt-in; add `-fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong
       -fstack-clash-protection -ffile-prefix-map`; drop `-w` (`-Wall` visible in CI); pinned container; split debuginfo.
       Test: CI build fails with no submodule and no network; `checksec` shows the flags; two clean builds give identical `libquickfix.a`.
-- [ ] **R-P1-6 CI gaps** in `.github/workflows/krx_ci.yml`. Add: `cargo build --release --locked`; MSRV 1.86 job;
+- [x] **R-P1-6 CI gaps** in `.github/workflows/krx_ci.yml`. Add: `cargo build --release --locked`; MSRV 1.86 job;
       `clippy -D warnings` on library crates; `cargo deny check` + `cargo audit`; ASan and TSan jobs (harness
       `build_san.sh` recipe); 20× loop of socket tests; submodule SHA equals the pin; production-matching
       distro image; SSL feature job; actions pinned by SHA.
       Test: all green, and a deliberate `clone_group` regression turns the ASan job red.
-- [ ] **R-P2-1** `catch (...)` in every wrapper; the SSL stub throws by value, not `new std::logic_error`
+- [x] **R-P2-1** `catch (...)` in every wrapper; the SSL stub throws by value, not `new std::logic_error`
       (`quickfix_bind.cpp:28-36, 89-182`). Test: `FixAcceptor_new(…, ssl=1)` in a non-SSL build returns an error code.
-- [ ] **R-P2-2** Small fixes, one unit test each: `FfiMessageStoreFactory` becomes `unsafe trait`;
+- [x] **R-P2-2** Small fixes, one unit test each: `FfiMessageStoreFactory` becomes `unsafe trait`;
       `Dictionary::get` int/double must not return `Ok(0)` on error; null-check `msg` in `FixSession_send`;
       rejects/logouts carry tag and text; `stop(force)` so `Drop` does not block ~10 s; `is_enabled`,
       `refresh`, on-demand TestRequest; socket buffer items wider than `u16`; typed `TimestampPrecision`.
@@ -172,7 +180,7 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 - [ ] **R-P2-4** Fast-forward fork `main` (stale at `1ee16fe`, 21 behind upstream `cc2b7a5`) and add a scheduled check.
 - [ ] **R-P2-5** Bump the submodule to C++ krx/main `25273cc` or record why not (superseded by the sprint 1 pin).
 - [ ] **R-P2-6** Upstream the `test_session` fix (`c5f99f3`), then the seqnum API, -6 and `clone_group` patches.
-- [ ] **R-P2-7** Docs and metadata: drop "ready for production" from the README; fix the `quickfix-msgkrx`
+- [x] **R-P2-7** Docs and metadata: drop "ready for production" from the README; fix the `quickfix-msgkrx`
       crate doc ("FIX44.xml"), `authors` and `license`; replace the SharePoint link in FIX44KRX.xml with a
       versioned spec reference.
 
