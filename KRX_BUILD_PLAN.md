@@ -48,7 +48,7 @@ fix arrives, so CI stays green.
 | # | Decision | Default (used unless the owner says otherwise) | Needed by |
 |---|---|---|---|
 | D1 | Threading default (R-P0-8, pending in `KRX_FORK_NOTES.md`) | **Decided by the owner, 12 Nov 2026:** `MultiThreaded` becomes the default; `SingleThreaded` stays, marked `#[deprecated]` | phase 6 |
-| D2 | Version after the breaking changes | `0.3.0` on `krx/main` at the end of phase 8; gateway moves in one PR | phase 8 |
+| D2 | Version after the breaking changes | `0.3.0` on `krx/main` at the end of phase 8; gateway moves in one PR. **Done on top of 10b**, every workspace crate at 0.3.0 | phase 8 |
 | D3 | Sanitizer toolchain in CI | nightly `-Zsanitizer`, clang 18 for the C++ side, Linux x86_64. ASan without `-Zbuild-std` (verified locally on aarch64 Linux). TSan with `-Zbuild-std`, because an uninstrumented std makes TSan report libtest's own channels as races; `-Zbuild-std` crashes every libtest binary on aarch64 and TSan cannot run under x86_64 emulation, so the TSan job is first verified by CI | phase 1 |
 | D4 | Red tests before their fix | under a sanitizer: listed in `scripts/san-known-red.txt` and skipped by `scripts/san.sh`; in plain `cargo test`: `#[ignore = "red until <item>: why"]`, and `cargo test -- --ignored` shows them red. Each fix phase removes its entries; none left by phase 9 | phase 1 |
 | D5 | Lint scope | **Decided by the owner, 12 Nov 2026.** New files must pass `lint.sh`. `quickfix-ffi/quickfix-bind` and `libquickfix` count as vendored upstream code: changed lines follow the house style where they can, the files are not reformatted, and the hook's findings on them are reported in each handover. Whether to exempt vendored C++ in the central policy is the owner's later call | every phase |
@@ -94,7 +94,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 8 | `krx/golive-p8` | PR #10 | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
 | 9 | `krx/golive-p9` | PR #11 | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
 | 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
-| 10b | `krx/golive-p10b` | done, PR pending | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
+| 10b | `krx/golive-p10b` | PR #13; version 0.3.0 (D2) | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
 
 ## 6. Handover notes
 

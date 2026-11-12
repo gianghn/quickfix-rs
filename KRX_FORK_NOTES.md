@@ -35,7 +35,7 @@ in the rebase on 0.2.2:
 | cba08af rust fmt | dropped | Formatting of code replaced above. |
 | f7982ea `Session::set_next_{sender,target}_msg_seq_num` | **kept** | Gateway operator commands (`src/port_fix/control.rs`). Not upstream. |
 | b2c8b29 `Session::get_expected_{sender,target}_num` + tests | **kept** | Same. Not upstream. |
-| 9b395d2 `quickfix-msgkrx` crate (FIX44KRX.xml) | **kept** | The KRX dictionary the gateway uses. Now version 0.2.2, `publish = false`. |
+| 9b395d2 `quickfix-msgkrx` crate (FIX44KRX.xml) | **kept** | The KRX dictionary the gateway uses. Now version 0.3.0 with the workspace, `publish = false`. |
 | 36098d7 `Message::get_fix_message_t` | **kept** | Gateway converter. Not upstream. |
 | f198bed `Message::from_fix_message_t` | **kept** | Same. Not upstream. |
 | 00132e0 `Message::to_fix_bytes` | **kept, thin wrapper** | Upstream added `to_fix_raw_bytes` (dc3d581), same two C++ calls, but it keeps the trailing NUL. The gateway's message path calls `to_fix_bytes` and wants no NUL, so `to_fix_bytes` now only pops that NUL. |
@@ -65,7 +65,8 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to
-drop it (and move its version requirements from 0.1.6 to 0.2.2) when it takes `krx/main`.
+drop it (and move its version requirements from 0.1.6 to 0.3.0, the version after the go-live
+phases' breaking changes, D2) when it takes `krx/main`.
 
 ## The threading flag: decided (owner, 12 Nov 2026)
 
