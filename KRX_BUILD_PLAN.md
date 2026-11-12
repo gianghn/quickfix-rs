@@ -98,6 +98,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
 | 1–10b | — | merged into `krx/main` (`4dcb99f`), 12 Nov 2026 | TSan report-only: all 170 reports C++-only (D6) |
 | 10b | `krx/golive-p10b` | PR #13; version 0.3.0 (D2) | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
+| 12 | `krx/golive-p12` | PR (base `krx/golive-p11`) | macOS archives differ (Linux already identical), release binary has no debug info to split, policy clippy on go-live lines 90 → identical on both, 1.47 MB binary + 32.7 MB `.debug`, 30 (29 `unsafe_code`, 1 kept `unnecessary_wraps`) |
 
 ## 6. Handover notes
 
@@ -383,3 +384,47 @@ are on lines the go-live phases wrote or touched (git blame): 28 are `unsafe` it
 `-F unsafe_code` forbids and an FFI binding cannot avoid; about 60 are fixable (22 missing SAFETY
 comments, 22 doc backticks, 6 missing `# Errors`, a few `must_use`/raw-borrow/semicolon). Not
 fixed in this phase; inspection and proposal to the owner.
+
+### Handover 12 — 2026-11-12
+**Built:** R-P1-5 rest. (a) `build.rs` makes both CMake builds write deterministic archives:
+on Linux `CMAKE_<LANG>_ARCHIVE_CREATE/APPEND/FINISH` use `ar qcD` / `ar qD` / `ranlib -D`; on
+macOS (`TargetOs::Other`) the builds get `ZERO_AR_DATE=1`. New
+`scripts/check-reproducible-build.sh`: two clean builds (this checkout and a copy at another path,
+fresh target dirs), compares `libquickfix.a` and `libquickfixbind.a`, names differing members.
+(b) New `scripts/split-debuginfo.sh BINARY` (objcopy `--only-keep-debug`, then `--strip-debug
+--add-gnu-debuglink`; Linux) and `scripts/check-split-debuginfo.sh` (release example built with
+`debug = "line-tables-only"`, split, then: no `.debug_info` in the binary, `.gnu_debuglink`
+present, libquickfix's DWARF in the `.debug` file). Both checks are steps of the CI
+`build-hardening` job. `KRX_FORK_NOTES.md` "Shipping a release binary" tells the gateway what to
+set and ship. Lint: the 60 fixable policy-clippy findings on go-live lines (22 SAFETY comments
+stating the invariant, 22 doc backticks, 6 `# Errors`, 3 `#[must_use]`, 3 `&raw mut`, 2
+`let _ =` in `Drop` → `.ok()` with the reason, 2 semicolons). The edit hook rejects
+`dictionary_item.rs`'s upstream `#![allow(missing_debug_implementations)]`, so it is gone and
+every item, `ConnectionType` and `SSLProtocol` derive `Debug`.
+**Red → green:** two clean builds, macOS: both archives differed (headers only, no member
+differed) → identical. Linux (Ubuntu 24.04 container, gcc 13, the CI image's distro): identical
+before the change already (Ubuntu's binutils defaults to `D`; 10a's `-ffile-prefix-map` covers
+paths) and after, same hashes; the `D` rules are in the CMake cache, for distros whose `ar` is not
+deterministic by default. Split: a default release binary had 0 debug sections, because Cargo's
+`debug = 0` implies `strip = "debuginfo"` and drops libquickfix's `-g` → 1.47 MB stripped
+binary + 32.7 MB `.debug` with the C++ debug info (Linux). Policy clippy flags on `quickfix`
+(`--lib --no-deps`, default features, `CLIPPY_CONF_DIR` default, blame against `1b42bc5`, measured
+on a commit): library 455 → 393; go-live lines 90 → 30 = 29 `unsafe_code` (FFI) + 1
+`unnecessary_wraps` (kept, below). The 10b note said 454/89; the same method on this base gives
+455/90 (one more `unsafe_code`).
+**Checks:** `cargo test --workspace` exit 0, 147 passed, 0 failed (macOS); clippy 1.99.1
+`--workspace --all-targets -D warnings` exit 0; `cargo +1.86.0 check --workspace --all-targets
+--locked` exit 0; fmt ok; `scripts/check-build-hardening.sh` exit 0 (macOS);
+`check-reproducible-build.sh` exit 0 (macOS and Linux); `check-split-debuginfo.sh` exit 0 (Linux).
+`lint.sh .` exit 1 as before: every finding is in vendored libquickfix (D5) or in upstream
+crates (policy clippy stops at `quickfix-spec-parser`, 40 errors, and never reaches `quickfix`);
+none is in a file this phase changed. CI not yet run on the new steps.
+**Decisions taken:** split with objcopy and a gateway profile setting, not a workspace
+`split-debuginfo` (this workspace's profiles do not reach the gateway binary; Cargo's split covers
+Rust only). `Message::from_fix_message_t` keeps its always-`Ok` `Result`: its doc keeps it on
+purpose for later validation, and dropping it breaks callers.
+**Away from the plan:** none. `quickfix/tests` not touched.
+**Left for the owner:** the gateway's release profile needs `debug = "line-tables-only"` and its
+release job must run `split-debuginfo.sh` (gateway repo). Production-matching distro image still
+open (which distro?). Policy-clippy findings outside go-live lines (363 library, upstream) and in
+tests are untouched.

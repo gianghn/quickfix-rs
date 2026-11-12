@@ -38,7 +38,7 @@ pub(crate) fn while_sending<T>(f: impl FnOnce() -> T) -> T {
 
 /// Runs a delete (`f`) once no send is in flight, and keeps new sends out until it is done.
 ///
-/// Call it after `stop()`: stop joins QuickFIX's threads, whose callbacks may send, so holding the
+/// Call it after `stop()`: stop joins `QuickFIX`'s threads, whose callbacks may send, so holding the
 /// gate across it could deadlock.
 pub(crate) fn while_deleting<T>(f: impl FnOnce() -> T) -> T {
     let _gate = SESSION_GATE.write().unwrap_or_else(PoisonError::into_inner);
@@ -48,6 +48,8 @@ pub(crate) fn while_deleting<T>(f: impl FnOnce() -> T) -> T {
 /// Send message to target design in session ID.
 pub fn send_to_target(msg: Message, session_id: &SessionId) -> Result<(), QuickFixError> {
     // NOTE: Message may be changed by real library. Just consume it so nothing will leak to rust code.
+    // SAFETY: `msg` and `session_id` own live C++ objects for the call; the gate keeps any session
+    // the id finds from being deleted mid-send.
     while_sending(|| ffi_code_to_result(unsafe { FixSession_sendToTarget(msg.0, session_id.0) }))
 }
 
@@ -82,7 +84,7 @@ impl Session<'static> {
     }
 }
 
-/// A seqnum as QuickFIX takes it: from 1 to `i32::MAX`.
+/// A seqnum as `QuickFIX` takes it: from 1 to `i32::MAX`.
 fn seq_num_arg(num: u64) -> Result<i32, QuickFixError> {
     i32::try_from(num).ok().filter(|n| *n >= 1).ok_or_else(|| {
         QuickFixError::invalid_argument(format!("seqnum {num} is not in 1..={}", i32::MAX))
@@ -107,6 +109,9 @@ impl Session<'_> {
 
     /// Send message using current session.
     pub fn send(&mut self, msg: Message) -> Result<bool, QuickFixError> {
+        // SAFETY: `self.inner` belongs to the acceptor or initiator `self` borrows (or that
+        // `lookup`'s caller keeps alive), `msg` owns a live message, and the gate keeps the
+        // session from being deleted mid-send.
         while_sending(|| ffi_code_to_bool(unsafe { FixSession_send(self.inner, msg.0) }))
     }
 
@@ -132,18 +137,34 @@ impl Session<'_> {
 
     /// Check if the session is enabled: `logon` enables it, `logout` disables it, and a disabled
     /// session does not log on again by itself.
+    ///
+    /// # Errors
+    ///
+    /// The binding's error when `QuickFIX` throws.
     pub fn is_enabled(&mut self) -> Result<bool, QuickFixError> {
+        // SAFETY: `self.inner` belongs to the acceptor or initiator `self` borrows (or that
+        // `lookup`'s caller keeps alive).
         ffi_code_to_bool(unsafe { FixSession_isEnabled(self.inner) })
     }
 
     /// Reload the sequence numbers and messages from the message store, for a store that another
     /// process changed.
+    ///
+    /// # Errors
+    ///
+    /// The store's error when it cannot be read.
     pub fn refresh(&mut self) -> Result<(), QuickFixError> {
+        // SAFETY: `self.inner` belongs to the acceptor or initiator `self` borrows (or that
+        // `lookup`'s caller keeps alive).
         ffi_code_to_result(unsafe { FixSession_refresh(self.inner) })
     }
 
-    /// Send a TestRequest (35=1) with `test_req_id` (112). The counterparty answers with a
-    /// Heartbeat carrying the same TestReqID, which proves the link works end to end.
+    /// Send a `TestRequest` (35=1) with `test_req_id` (112). The counterparty answers with a
+    /// Heartbeat carrying the same `TestReqID`, which proves the link works end to end.
+    ///
+    /// # Errors
+    ///
+    /// `test_req_id` holds a NUL byte, or the send fails as in [`Session::send`].
     pub fn send_test_request(&mut self, test_req_id: &str) -> Result<bool, QuickFixError> {
         let mut msg = Message::new();
         msg.with_header_mut(|header| header.set_field(35, "1"))?;
@@ -152,7 +173,7 @@ impl Session<'_> {
     }
     /// Set next sender message sequence number.
     ///
-    /// QuickFIX does not take the session lock here: call it while the session is logged out,
+    /// `QuickFIX` does not take the session lock here: call it while the session is logged out,
     /// or a concurrent send may use the old number.
     ///
     /// # Errors
@@ -180,6 +201,8 @@ impl Session<'_> {
     ///
     /// The binding's error when the store cannot be read (it used to come back as a seqnum).
     pub fn get_expected_target_num(&self) -> Result<u64, QuickFixError> {
+        // SAFETY: `self.inner` belongs to the acceptor or initiator `self` borrows (or that
+        // `lookup`'s caller keeps alive).
         seq_num_result(unsafe { quickfix_ffi::FixSession_getExpectedTargetNum(self.inner) })
     }
 
@@ -189,6 +212,8 @@ impl Session<'_> {
     ///
     /// The binding's error when the store cannot be read (it used to come back as a seqnum).
     pub fn get_expected_sender_num(&self) -> Result<u64, QuickFixError> {
+        // SAFETY: `self.inner` belongs to the acceptor or initiator `self` borrows (or that
+        // `lookup`'s caller keeps alive).
         seq_num_result(unsafe { quickfix_ffi::FixSession_getExpectedSenderNum(self.inner) })
     }
 }
