@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// This method expect header / trailer / message fields are already filled.
 fn generate_spec_fields(dst_spec: &mut FixSpec, src_spec: &FixSpec) {
     // Extend component list.
-    let component_names = extract_spec_component_names(&src_spec, &dst_spec.messages);
+    let component_names = extract_spec_component_names(src_spec, &dst_spec.messages);
     dst_spec.component_specs = src_spec
         .component_specs
         .iter()
@@ -64,7 +64,7 @@ fn generate_spec_fields(dst_spec: &mut FixSpec, src_spec: &FixSpec) {
         .collect();
 
     // Extend fields list.
-    let field_names = extract_spec_fields_names(&dst_spec);
+    let field_names = extract_spec_fields_names(dst_spec);
     dst_spec.field_specs = src_spec
         .field_specs
         .iter()
@@ -92,10 +92,9 @@ fn extract_spec_component_names(spec: &FixSpec, messages: &[Message]) -> HashSet
                         .component_specs
                         .iter()
                         .find(|x| x.name == sub_component.name)
-                        .expect(&format!(
-                            "Fail to find sub component in spec: {}",
-                            sub_component.name
-                        ));
+                        .unwrap_or_else(|| {
+                            panic!("Fail to find sub component in spec: {}", sub_component.name)
+                        });
                     visit(spec, &comp.values, acc);
                 }
             }

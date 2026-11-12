@@ -43,7 +43,7 @@ fn test_from_text() {
     // Check with invalid C string
     {
         assert_eq!(
-            Message::try_from_text("\050=18").unwrap_err(),
+            Message::try_from_text("\x0050=18").unwrap_err(),
             QuickFixError::invalid_argument("nul byte found in provided data at position: 0")
         );
     }

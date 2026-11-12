@@ -98,10 +98,10 @@ fn test_bool() {
 
     // Test with valid kay / value
     dict.set("bool_1", false).unwrap();
-    assert_eq!(dict.get::<bool>("bool_1").unwrap(), false);
+    assert!(!dict.get::<bool>("bool_1").unwrap());
 
     dict.set("bool_2", true).unwrap();
-    assert_eq!(dict.get::<bool>("bool_2").unwrap(), true);
+    assert!(dict.get::<bool>("bool_2").unwrap());
 
     // Test with invalid key
     assert!(dict.get::<bool>("invalid").is_err());

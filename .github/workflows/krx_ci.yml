@@ -1,6 +1,8 @@
 # KRX fork CI for krx/main (the integration branch the KRX gateway vendors) and its topic
 # branches. Upstream's ci.yml and coverage.yml stay on main. libquickfix is our fork
 # gianghn/quickfix (krx/main); see KRX_FORK_NOTES.md here and there.
+#
+# Actions are pinned by commit SHA (R-P1-6); the comment names the tag the SHA was taken from.
 name: KRX fork CI
 on:
   push:
@@ -8,6 +10,9 @@ on:
   pull_request:
     branches: ["krx/**"]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,31 +26,107 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       # Parallel again: test_session.rs now holds GLOBAL_LOCK like the other session tests.
       # MultiThreaded is no longer behind a feature, so the default build tests both kinds.
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
+  # Clippy's toolchain is pinned: a new Rust release brings new lints, which must not turn CI red
+  # on code nobody changed. Bump it on purpose.
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: 1.99.1
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Format
         run: cargo fmt --all --check
-      # No -D warnings: upstream's tests and examples carry clippy warnings we don't patch.
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  # Every crate declares rust-version = 1.86.0.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.86.0
+          # rustfmt: the message crates' build scripts format the generated code.
+          components: rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Check on Rust 1.86
+        run: cargo check --workspace --all-targets --locked
+
+  # What the gateway ships: an optimised build from the committed lockfile.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Release build
+        run: cargo build --workspace --release --locked
+
+  # The C++ build fetches nothing and is hardened (R-P1-5).
+  build-hardening:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Offline without the submodule, and hardening flags
+        run: scripts/check-build-hardening.sh
+
+  # Known-vulnerable dependencies. Licenses and bans are checked by `cargo deny` on the gateway's
+  # own lockfile, which is what ships (KRX_BUILD_PLAN.md, D7).
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit
+
+  ssl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: OpenSSL headers
+        run: sudo apt-get install -y --no-install-recommends libssl-dev
+      - name: Tests with the SSL feature
+        run: cargo test -p quickfix --features build-with-ssl --locked
 
   # Most go-live P0s are memory or thread bugs that plain `cargo test` cannot see.
   # Tests in scripts/san-known-red.txt are open items and skipped (KRX_BUILD_PLAN.md, D4).
@@ -59,14 +140,15 @@ jobs:
       matrix:
         sanitizer: [address, thread]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: nightly
           # rustfmt: the message crates' build scripts format the generated code.
           components: rust-src, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: san-${{ matrix.sanitizer }}
       # clang's sanitizer runtimes for the C++ side, and llvm-symbolizer for readable reports.
@@ -102,11 +184,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Socket tests, 20 runs
         run: scripts/test-loop.sh 20
 
@@ -114,7 +198,7 @@ jobs:
   submodule-pin:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
       - name: Submodule commit is on gianghn/quickfix krx/main

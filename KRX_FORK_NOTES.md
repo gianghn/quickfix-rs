@@ -60,6 +60,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 7 | Borrowed views: `MessageMut`, `HeaderMut`, `TrailerMut`, `GroupMut` | `on_msg_to_admin`/`on_msg_to_app` take `&mut MessageMut<'_>`; helper fns typed `&mut Header`/`&Group` change to the view types |
 | 8 | Generated `try_get_*` and `TryFrom<Message>` (`FieldError`); Y/N booleans parse; NaN/inf floats rejected | `X::from(msg)` becomes `X::try_from(msg)?`; prefer `try_get_*` on inbound messages; custom `IntoFixValue` impls return `QuickFixError` |
 | 9 | Seqnum APIs take/return `u64`/`Result`; errors are never stale; log callbacks and `get_field_bytes` give exact bytes; `to_fix_bytes` keeps bytes after a NUL | operator seqnum commands pass `u64` and handle `Err`; override `LogCallback::on_*_bytes` for an exact audit log |
+| 10a | Hermetic, hardened C++ build (no git fetch, warnings on, stack protector, FORTIFY); CI: MSRV, release `--locked`, audit, SSL, clippy `-D warnings`, SHA-pinned actions; reset runbook | check out the submodule before building (`git submodule update --init --recursive`); set `QUICKFIX_FFI_COMPILER_LAUNCHER=sccache` to keep sccache; operators read `doc/RUNBOOK_SEQNUM.md` |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to

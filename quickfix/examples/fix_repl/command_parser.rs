@@ -62,7 +62,9 @@ impl FromStr for ShellCommand {
 fn parse_send_to(source: &str) -> Result<(Message, SessionId), BadCommand> {
     // Split command into token
     let mut tokens = source.split_whitespace();
-    debug_assert_eq!(tokens.next().as_deref(), Some("send_to"));
+    // Consumed in every build: inside the assert it was skipped in release.
+    let command = tokens.next();
+    debug_assert_eq!(command, Some("send_to"));
 
     let text_msg = tokens.next().ok_or(BadCommand::InvalidArgumentCount {
         current: 0,
@@ -94,8 +96,7 @@ fn parse_send_to(source: &str) -> Result<(Message, SessionId), BadCommand> {
             .ok_or(BadCommand::InvalidArgument("Invalid value"))?;
 
         msg.set_field(tag, value)
-            .ok()
-            .expect("Fail to set msg tag=value");
+            .map_err(|_| BadCommand::InvalidArgument("Invalid tag=value"))?;
     }
 
     // Build session ID from 2nd data token

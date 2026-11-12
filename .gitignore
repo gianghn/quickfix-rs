@@ -1,6 +1,11 @@
 # Build dir
 target
 
+# CMake build dirs the local C++ lint tools create
+quickfix-ffi/build/
+quickfix-ffi/examples/build/
+quickfix-ffi/quickfix-bind/build/
+
 # IDE
 .vscode
 

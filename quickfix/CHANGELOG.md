@@ -31,6 +31,8 @@
 - The C log callbacks receive `(msg, len)`. `LogCallback` gains `on_incoming_bytes`,
   `on_outgoing_bytes` and `on_event_bytes` with exact bytes; the default forwards lossy text to
   the existing methods (R-P1-3).
+- `quickfix-ffi`'s build no longer runs `git submodule update`: check the submodule out first.
+  sccache/ccache are used only when `QUICKFIX_FFI_COMPILER_LAUNCHER` names one (R-P1-5).
 
 ### Fixes
 
@@ -40,6 +42,9 @@
   session is `SessionNotFound` (R-P1-2).
 - `to_fix_bytes` / `to_fix_raw_bytes` keep every byte after an embedded NUL; new
   `Message::get_field_bytes` reads data fields exactly (R-P1-3, R-P1-4).
+- The C++ code is built with warnings shown and hardening flags (`-fstack-protector-strong`,
+  frame pointers, `-D_FORTIFY_SOURCE=2` and stack-clash protection on Linux) (R-P1-5).
+- `Session::reset` documents that it wipes the store; see `doc/RUNBOOK_SEQNUM.md` (R-P1-7).
 
 - `MsgFromAppError::UnsupportedMessageType` now reaches the peer as a BusinessMessageReject
   (35=j, 380=3); it used to be dropped without a reply (R-P0-5).

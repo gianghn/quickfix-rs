@@ -53,22 +53,22 @@ impl FixRecorder {
 impl ApplicationCallback for FixRecorder {
     fn on_create(&self, session_id: &SessionId) {
         self.session_created.fetch_add(1, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
     }
 
     fn on_logon(&self, session_id: &SessionId) {
         self.is_logged_in.store(true, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
     }
 
     fn on_logout(&self, session_id: &SessionId) {
         self.is_logged_in.store(false, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
     }
 
     fn on_msg_to_admin(&self, _msg: &mut MessageMut<'_>, session_id: &SessionId) {
         self.sent_admin.fetch_add(1, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
     }
 
     fn on_msg_to_app(
@@ -77,7 +77,7 @@ impl ApplicationCallback for FixRecorder {
         session_id: &SessionId,
     ) -> Result<(), MsgToAppError> {
         self.sent_user.fetch_add(1, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
         Ok(())
     }
 
@@ -87,7 +87,7 @@ impl ApplicationCallback for FixRecorder {
         session_id: &SessionId,
     ) -> Result<(), MsgFromAdminError> {
         self.recv_admin.fetch_add(1, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
         Ok(())
     }
 
@@ -97,7 +97,7 @@ impl ApplicationCallback for FixRecorder {
         session_id: &SessionId,
     ) -> Result<(), MsgFromAppError> {
         self.recv_user.fetch_add(1, Ordering::Relaxed);
-        assert_session_id_equals(&self.expected_session_id, &session_id);
+        assert_session_id_equals(&self.expected_session_id, session_id);
         Ok(())
     }
 }

@@ -111,6 +111,15 @@ impl Session<'_> {
 
     /// Reset session by sending a logout & disconnecting, but still keeping the session enabled,
     /// so that logon is retried.
+    ///
+    /// # Warning
+    ///
+    /// This is a one-sided reset (R-P1-7): it **wipes the message store**, so both sequence
+    /// numbers go back to 1 and the stored outbound messages are gone. The counterparty is not
+    /// told; unless it resets too, the next logon fails on a sequence gap, and messages it asks
+    /// to resend can no longer be resent. To realign with a counterparty, log out and use
+    /// [`Session::set_next_sender_msg_seq_num`] / [`Session::set_next_target_msg_seq_num`]
+    /// instead (`doc/RUNBOOK_SEQNUM.md`).
     pub fn reset(&mut self) -> Result<(), QuickFixError> {
         ffi_code_to_result(unsafe { FixSession_reset(self.inner) })
     }
