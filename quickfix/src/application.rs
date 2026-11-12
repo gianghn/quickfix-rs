@@ -5,7 +5,7 @@ use quickfix_ffi::{
     FixMessage_t, FixSessionID_t,
 };
 
-use crate::{utils::abort_on_panic, Message, QuickFixError, SessionId};
+use crate::{utils::abort_on_panic, Borrowed, Message, MessageMut, QuickFixError, SessionId};
 
 /// Error result that can occurs from a `on_msg_to_app` callback.
 #[derive(Debug)]
@@ -90,6 +90,20 @@ impl AsFixCallbackCode for MsgFromAppError {
 /// impl quickfix::ApplicationCallback for Counter {}
 /// ```
 ///
+/// The message given to `on_msg_to_admin` and `on_msg_to_app` belongs to QuickFIX: it can be
+/// edited but not moved out, which would free it under QuickFIX (R-P0-3):
+///
+/// ```compile_fail
+/// use quickfix::*;
+/// struct Thief;
+/// impl ApplicationCallback for Thief {
+///     fn on_msg_to_app(&self, msg: &mut Message, _: &SessionId) -> Result<(), MsgToAppError> {
+///         let _stolen = std::mem::take(msg);
+///         Ok(())
+///     }
+/// }
+/// ```
+///
 /// A panic in any of these methods aborts the process, so the message it was handling is neither
 /// consumed nor sent: the store still expects it and the peer resends it after a restart.
 pub trait ApplicationCallback: Send + Sync {
@@ -105,12 +119,16 @@ pub trait ApplicationCallback: Send + Sync {
     /// Called before sending message to admin level.
     ///
     /// Message can be updated at this stage.
-    fn on_msg_to_admin(&self, _msg: &mut Message, _session: &SessionId) {}
+    fn on_msg_to_admin(&self, _msg: &mut MessageMut<'_>, _session: &SessionId) {}
 
     /// Called before sending message to application level.
     ///
     /// Message can be updated at this stage.
-    fn on_msg_to_app(&self, _msg: &mut Message, _session: &SessionId) -> Result<(), MsgToAppError> {
+    fn on_msg_to_app(
+        &self,
+        _msg: &mut MessageMut<'_>,
+        _session: &SessionId,
+    ) -> Result<(), MsgToAppError> {
         Ok(())
     }
 
@@ -192,8 +210,7 @@ where
 
         abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
-            let mut msg = ManuallyDrop::new(Message(msg));
-            this.on_msg_to_admin(&mut msg, &session_id);
+            this.on_msg_to_admin(&mut Borrowed::new(Message(msg)), &session_id);
         });
     }
 
@@ -206,8 +223,7 @@ where
 
         let output_code = abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
-            let mut msg = ManuallyDrop::new(Message(msg));
-            this.on_msg_to_app(&mut msg, &session_id)
+            this.on_msg_to_app(&mut Borrowed::new(Message(msg)), &session_id)
         });
 
         callback_to_code(output_code)

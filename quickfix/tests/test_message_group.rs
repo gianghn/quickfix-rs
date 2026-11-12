@@ -233,12 +233,18 @@ fn clone_group_returns_group_with_its_field_id_and_delim() {
     }
 }
 
+/// R-P0-7 / R-P0-3: a stored entry is a plain FieldMap; the view reports the tag it was looked up
+/// by and has no delimiter, instead of reading `Group` members past the entry.
 #[test]
-#[ignore = "red until R-P0-3 (phase 7): with_group hands out a stored entry, a plain FieldMap, as a Group"]
-fn with_group_reports_field_id_and_delim_of_the_entry() {
+fn with_group_reports_field_id_of_the_entry() {
     let msg = build_news("Great news", &["first"]).unwrap();
-    let ids = msg.with_group(1, MSG_NO_LINES_OF_TEXT, |g| (g.field_id(), g.delim()));
-    assert_eq!(ids, Some((MSG_NO_LINES_OF_TEXT, MSG_TEXT)));
+    let seen = msg.with_group(1, MSG_NO_LINES_OF_TEXT, |g| {
+        (g.field_id(), g.get_field(MSG_TEXT))
+    });
+    assert_eq!(
+        seen,
+        Some((MSG_NO_LINES_OF_TEXT, Some("first".to_string())))
+    );
 }
 
 const MSG_NO_HOPS: i32 = 627;
@@ -273,7 +279,7 @@ fn test_read_group_ref() {
     let msg = build_news("Great news", &["Some new library", "are available", "soon"]).unwrap();
     assert_eq!(msg.get_field(MSG_HEADLINE).unwrap(), "Great news");
 
-    fn read_text(group: &Group) -> String {
+    fn read_text(group: &GroupMut<'_>) -> String {
         group.get_field(MSG_TEXT).unwrap()
     }
 

@@ -66,14 +66,14 @@ impl ApplicationCallback for FixRecorder {
         assert_session_id_equals(&self.expected_session_id, &session_id);
     }
 
-    fn on_msg_to_admin(&self, _msg: &mut Message, session_id: &SessionId) {
+    fn on_msg_to_admin(&self, _msg: &mut MessageMut<'_>, session_id: &SessionId) {
         self.sent_admin.fetch_add(1, Ordering::Relaxed);
         assert_session_id_equals(&self.expected_session_id, &session_id);
     }
 
     fn on_msg_to_app(
         &self,
-        _msg: &mut Message,
+        _msg: &mut MessageMut<'_>,
         session_id: &SessionId,
     ) -> Result<(), MsgToAppError> {
         self.sent_user.fetch_add(1, Ordering::Relaxed);

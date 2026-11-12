@@ -57,6 +57,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 4 | Group copies (`clone_group`, generated group getters) no longer read past the heap | none |
 | 5 | Callback traits require `Send + Sync`; `from_fix_message_t` is `unsafe`, new `into_fix_message_t` | app and log types must be `Send + Sync`; wrap `from_fix_message_t` in `unsafe` with a stated pointer origin |
 | 6 | `MultiThreaded` is the default, `SingleThreaded` deprecated; dropping an acceptor/initiator waits for in-flight sends | ask for `MultiThreaded`; a send racing a drop now returns `SessionNotFound` instead of crashing |
+| 7 | Borrowed views: `MessageMut`, `HeaderMut`, `TrailerMut`, `GroupMut` | `on_msg_to_admin`/`on_msg_to_app` take `&mut MessageMut<'_>`; helper fns typed `&mut Header`/`&Group` change to the view types |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to
