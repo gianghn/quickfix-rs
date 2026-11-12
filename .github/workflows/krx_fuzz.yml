@@ -1,0 +1,82 @@
+# Nightly libFuzzer run of the fuzz/ crate (go-live phase 14): each target for a bounded time,
+# C++ and Rust under ASan. A crash fails its job and uploads the input that caused it.
+#
+# R-P0-13 (QuickFIX trusts a data field's length) is open, so the targets skip inputs that only
+# rediscover it (feature skip-r-p0-13, fuzz/README.md); fuzz/known_crashes/ holds its inputs.
+#
+# Actions are pinned by commit SHA (R-P1-6); the comment names the tag the SHA was taken from.
+name: KRX fuzz
+on:
+  schedule:
+    - cron: "23 18 * * *" # 03:23 KST
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per target
+        default: "600"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The targets skip input when their dictionary does not load; this proves every one loads.
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: fuzz
+          key: fuzz-check
+      - name: Dictionaries load, R-P0-13 filter
+        working-directory: fuzz
+        run: cargo +nightly test --locked --lib
+
+  fuzz:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [parse_no_dict, parse_fix44, parse_fix44krx, parse_fixt11_fix50]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: fuzz
+          key: fuzz
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+        with:
+          tool: cargo-fuzz
+      # llvm-symbolizer for readable reports.
+      - name: clang tools
+        run: sudo apt-get install -y --no-install-recommends llvm-18
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || '600' }}
+        run: |
+          mkdir -p "fuzz/corpus/${{ matrix.target }}"
+          scripts/fuzz.sh run "${{ matrix.target }}" "corpus/${{ matrix.target }}" seeds -- \
+            -dict=fix.dict -max_total_time="$SECONDS_PER_TARGET" -timeout=10 -print_final_stats=1
+      - name: Upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
