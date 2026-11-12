@@ -105,6 +105,38 @@ jobs:
       - name: Release debug info splits into a .debug file
         run: scripts/check-split-debuginfo.sh
 
+  # The gateway ships on RHEL/Rocky Linux 9: gcc 11, binutils 2.35 (`ar` not deterministic by
+  # default, unlike Ubuntu's), glibc 2.34. Image pinned by digest, like the actions by SHA.
+  rocky9:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6
+    steps:
+      # Before checkout: without git, actions/checkout downloads a tarball with no submodules.
+      # perl-Digest-SHA: `shasum` for check-reproducible-build.sh.
+      - name: Toolchain from the Rocky repos
+        run: >-
+          dnf -y -q install --setopt=install_weak_deps=False
+          gcc-c++ cmake make git perl-Digest-SHA diffutils
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+      # rustfmt: the message crates' build scripts format the generated code.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.99.1
+          components: rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: rocky9
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: Offline without the submodule, and hardening flags
+        run: scripts/check-build-hardening.sh
+      - name: Two clean builds give identical static libraries
+        run: scripts/check-reproducible-build.sh
+
   # Known-vulnerable dependencies. Licenses and bans are checked by `cargo deny` on the gateway's
   # own lockfile, which is what ships (KRX_BUILD_PLAN.md, D7).
   audit:
