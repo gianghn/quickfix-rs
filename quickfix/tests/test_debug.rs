@@ -4,8 +4,10 @@ use quickfix::*;
 fn test_application() {
     let obj = MsgToAppError::DoNotSend;
     assert_eq!(format!("{obj:?}"), "DoNotSend");
-    let obj = MsgFromAdminError::RejectLogon;
-    assert_eq!(format!("{obj:?}"), "RejectLogon");
+    let obj = MsgFromAdminError::RejectLogon {
+        text: "closed".to_string(),
+    };
+    assert_eq!(format!("{obj:?}"), r#"RejectLogon { text: "closed" }"#);
     let obj = MsgFromAppError::UnsupportedMessageType;
     assert_eq!(format!("{obj:?}"), "UnsupportedMessageType");
 }

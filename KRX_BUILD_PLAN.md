@@ -93,8 +93,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 7 | `krx/golive-p7` | PR #9 | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
 | 8 | `krx/golive-p8` | PR #10 | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
 | 9 | `krx/golive-p9` | PR #11 | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
-| 10a | `krx/golive-p10` | done, PR pending | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
-| 10b | `krx/golive-p10b` | not started | R-P2-2 |
+| 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
+| 10b | `krx/golive-p10b` | done, PR pending | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
 
 ## 6. Handover notes
 
@@ -337,10 +337,11 @@ CMake cache shared by both builds) → 0 on macOS and Linux (FORTIFY and stack-c
 **Checks:** `cargo test --workspace` green (macOS); doctests 8/8; clippy `-D warnings` exit 0;
 `cargo +1.86.0 check --workspace --all-targets --locked` ok; `cargo audit` 0 advisories; SSL
 feature tests green (Linux container); `scripts/san.sh address` exit 0 (Linux); fmt ok.
-`build.rs` returns a typed `BuildError` instead of `expect`/`panic!`; every Rust file this phase
-changed is clean under the policy's clippy. `lint.sh` still fails on code this phase did not
-touch: vendored C++ (D5), upstream crates' config/metadata/ast-grep findings, and `--all-features`
-needing MySQL.
+`build.rs` returns a typed `BuildError` instead of `expect`/`panic!` and is clean under the
+policy's clippy. **Corrected in 10b:** this note first said every Rust file the phase changed was
+clean; the policy's clippy never reached the `quickfix` crate (it stops at `quickfix-spec-parser`
+and `quickfix-ffi`, and `--all-features` needs MySQL), so only `build.rs` was checked. See
+handover 10b for the real numbers.
 **Found on the way:** `fix_repl`'s `parse_send_to` consumed the `send_to` token inside a
 `debug_assert_eq!`, so release builds read the command word as the message; fixed.
 **Away from the plan:** not done here: identical `libquickfix.a` from two clean builds, split
@@ -349,3 +350,33 @@ debuginfo, a production-matching distro image (which distro does the gateway shi
 **Left for the owner:** the SharePoint link is still in git history; msgkrx's `license` is
 upstream's `MIT OR Apache-1.1` (the QuickFIX licence file) — is that right for the KRX
 dictionary? D9 exemption in the central policy.
+
+### Handover 10b — 2026-11-12
+**Built (R-P2-2):** `FfiMessageStoreFactory` is an `unsafe trait` (SAFETY on each impl);
+`Dictionary::get::<i32|f64>` returns the binding's error instead of `Ok(0)` (out-parameter ABI);
+`FixSession_send` null-checks `msg`; rejects carry their tag and logon rejects their text
+(`MsgFromAppError`/`MsgFromAdminError` variants take `{ tag }` / `{ text }`, handed to C++ through
+the thread-local `FixApplication_setRejectDetail`); `ConnectionHandler::stop_force`, used by
+`Drop`; `Session::is_enabled`, `refresh`, `send_test_request`; `SocketSendBufferSize` /
+`SocketReceiveBufferSize` are `u32`, refused above `i32::MAX`; typed `TimestampPrecision`.
+Raw-peer helpers moved to `tests/utils/raw_peer.rs`.
+**Red → green:** `test_session_controls.rs` (5 tests) and the reject tests in
+`test_callback_failures.rs` did not compile on the old API (13 errors); `get::<i32>("missing")`
+was `Ok`; dropping an acceptor whose peer never answers the Logout took 15.0 s; a safe
+`impl FfiMessageStoreFactory` compiled. Now: Session rejects carry RefTagID 371=148 / 33; the
+business reject names tag 1 in its text; the logon reject's Logout says `Rejected Logon Attempt:
+outside trading hours`; TestRequest `PING-1` comes back as a Heartbeat with 112=PING-1; drop takes
+4.7 s; the doctest fails to compile. Upstream `test_dictionary` expected `Ok(0)` for a missing
+key and for NaN/inf; it now expects errors.
+**Checks:** `cargo test --workspace` green (macOS); doctests 9/9; clippy `-D warnings` exit 0;
+`scripts/san.sh address` exit 0 (Linux); fmt ok.
+**Away from the plan:** no Rust test for the `FixSession_send` null check (`FixMessage_t` is
+`NonNull`; only C callers can pass null). Drop is not instant: QuickFIX's
+`ThreadedSocketAcceptor::onStop` busy-waits up to 5 s while a session is logged on, whatever
+`force` says — a C++ fork item.
+**Lint, measured properly:** the policy's clippy flags run on `quickfix` alone (`--no-deps`,
+default features) give 454 findings in the library and 310 in tests. Of the library findings, 89
+are on lines the go-live phases wrote or touched (git blame): 28 are `unsafe` itself, which
+`-F unsafe_code` forbids and an FFI binding cannot avoid; about 60 are fixable (22 missing SAFETY
+comments, 22 doc backticks, 6 missing `# Errors`, a few `must_use`/raw-borrow/semicolon). Not
+fixed in this phase; inspection and proposal to the owner.

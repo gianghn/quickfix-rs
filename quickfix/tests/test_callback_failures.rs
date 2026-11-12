@@ -338,23 +338,43 @@ enum Answer {
     UnsupportedMessageType,
 }
 
-/// A reply seen by the sender: MsgType (35), SessionRejectReason (373), BusinessRejectReason (380).
-type Reply = (String, Option<String>, Option<String>);
+/// A reply seen by the sender: MsgType (35), SessionRejectReason (373), BusinessRejectReason
+/// (380), and RefTagID (371): where a session reject names the tag the callback gave.
+type Reply = (String, Option<String>, Option<String>, Option<String>);
 
+/// Every admin or application message the sender got, with its Text (58).
 #[derive(Debug, Default)]
-struct Inbox(Mutex<Vec<Reply>>);
+struct Inbox(Mutex<Vec<(Reply, Option<String>)>>);
 
 impl Inbox {
     fn record(&self, msg: &Message) {
         let msg_type = msg.with_header(|h| h.get_field(35)).unwrap_or_default();
-        let reply = (msg_type, msg.get_field(373), msg.get_field(380));
-        self.0.lock().expect("inbox poisoned").push(reply);
+        let reply = (
+            msg_type,
+            msg.get_field(373),
+            msg.get_field(380),
+            msg.get_field(371),
+        );
+        let mut all = self.0.lock().expect("inbox poisoned");
+        all.push((reply, msg.get_field(58)));
     }
 
     fn rejects(&self) -> Vec<Reply> {
+        self.texts_of(&["3", "j"])
+            .into_iter()
+            .map(|r| r.0)
+            .collect()
+    }
+
+    /// Text (58) of the first message of type `msg_type`.
+    fn text_of(&self, msg_type: &str) -> Option<String> {
+        self.texts_of(&[msg_type]).into_iter().find_map(|r| r.1)
+    }
+
+    fn texts_of(&self, msg_types: &[&str]) -> Vec<(Reply, Option<String>)> {
         let all = self.0.lock().expect("inbox poisoned");
         all.iter()
-            .filter(|r| r.0 == "3" || r.0 == "j")
+            .filter(|r| msg_types.contains(&r.0 .0.as_str()))
             .cloned()
             .collect()
     }
@@ -376,17 +396,19 @@ struct Rejecting(Answer);
 
 impl ApplicationCallback for Rejecting {
     fn on_msg_from_app(&self, _: &Message, _: &SessionId) -> Result<(), MsgFromAppError> {
+        // The tag named here must reach the counterparty as RefTagID (371), R-P2-2.
         Err(match self.0 {
-            Answer::FieldNotFound => MsgFromAppError::FieldNotFound,
-            Answer::IncorrectDataFormat => MsgFromAppError::IncorrectDataFormat,
-            Answer::IncorrectTagValue => MsgFromAppError::IncorrectTagValue,
+            Answer::FieldNotFound => MsgFromAppError::FieldNotFound { tag: 1 },
+            Answer::IncorrectDataFormat => MsgFromAppError::IncorrectDataFormat { tag: 148 },
+            Answer::IncorrectTagValue => MsgFromAppError::IncorrectTagValue { tag: 33 },
             Answer::UnsupportedMessageType => MsgFromAppError::UnsupportedMessageType,
         })
     }
 }
 
-/// The rejects the sender gets back for one News when the receiver answers `answer`.
-fn rejects_for(answer: Answer) -> Result<Vec<Reply>, QuickFixError> {
+/// The rejects (with their Text) the sender gets back for one News when the receiver answers
+/// `answer`.
+fn rejects_for(answer: Answer) -> Result<Vec<(Reply, Option<String>)>, QuickFixError> {
     let _lock = serial();
     let port = find_available_port();
     let settings_sender = build_settings(ServerType::Sender, port)?;
@@ -425,49 +447,108 @@ fn rejects_for(answer: Answer) -> Result<Vec<Reply>, QuickFixError> {
 
     initiator.stop()?;
     acceptor.stop()?;
-    Ok(sender.rejects())
+    Ok(sender.texts_of(&["3", "j"]))
 }
 
-fn reply(msg_type: &str, tag_373: Option<&str>, tag_380: Option<&str>) -> Reply {
+fn reply(
+    msg_type: &str,
+    tag_373: Option<&str>,
+    tag_380: Option<&str>,
+    tag_371: Option<&str>,
+) -> Reply {
     (
         msg_type.to_string(),
         tag_373.map(String::from),
         tag_380.map(String::from),
+        tag_371.map(String::from),
     )
+}
+
+fn only_reply(rejects: Vec<(Reply, Option<String>)>) -> (Reply, String) {
+    assert_eq!(rejects.len(), 1, "one reject: {rejects:?}");
+    let (reply, text) = rejects.into_iter().next().expect("one reject");
+    (reply, text.unwrap_or_default())
 }
 
 #[test]
 fn from_app_unsupported_message_type_sends_business_reject_380_3() -> Result<(), QuickFixError> {
-    assert_eq!(
-        rejects_for(Answer::UnsupportedMessageType)?,
-        [reply("j", None, Some("3"))]
-    );
+    let (got, _) = only_reply(rejects_for(Answer::UnsupportedMessageType)?);
+    assert_eq!(got, reply("j", None, Some("3"), None));
     Ok(())
 }
 
 #[test]
 fn from_app_field_not_found_sends_business_reject_380_5() -> Result<(), QuickFixError> {
-    assert_eq!(
-        rejects_for(Answer::FieldNotFound)?,
-        [reply("j", None, Some("5"))]
-    );
+    let (got, text) = only_reply(rejects_for(Answer::FieldNotFound)?);
+    assert_eq!(got, reply("j", None, Some("5"), None));
+    // A business reject has no RefTagID: QuickFIX names the tag in the text.
+    assert!(text.ends_with("(1)"), "text names tag 1: {text}");
     Ok(())
 }
 
 #[test]
 fn from_app_incorrect_data_format_sends_reject_373_6() -> Result<(), QuickFixError> {
-    assert_eq!(
-        rejects_for(Answer::IncorrectDataFormat)?,
-        [reply("3", Some("6"), None)]
-    );
+    let (got, _) = only_reply(rejects_for(Answer::IncorrectDataFormat)?);
+    assert_eq!(got, reply("3", Some("6"), None, Some("148")));
     Ok(())
 }
 
 #[test]
 fn from_app_incorrect_tag_value_sends_reject_373_5() -> Result<(), QuickFixError> {
+    let (got, _) = only_reply(rejects_for(Answer::IncorrectTagValue)?);
+    assert_eq!(got, reply("3", Some("5"), None, Some("33")));
+    Ok(())
+}
+
+/// Refuses every Logon with a reason the counterparty should see.
+#[derive(Debug)]
+struct LogonGate;
+
+impl ApplicationCallback for LogonGate {
+    fn on_msg_from_admin(&self, msg: &Message, _: &SessionId) -> Result<(), MsgFromAdminError> {
+        match msg.with_header(|h| h.get_field(35)).as_deref() {
+            Some("A") => Err(MsgFromAdminError::RejectLogon {
+                text: "outside trading hours".to_string(),
+            }),
+            _ => Ok(()),
+        }
+    }
+}
+
+#[test]
+fn reject_logon_sends_its_text_in_the_logout() -> Result<(), QuickFixError> {
+    let _lock = serial();
+    let port = find_available_port();
+    let settings_sender = build_settings(ServerType::Sender, port)?;
+    let settings_receiver = build_settings(ServerType::Receiver, port)?;
+    let (sender, receiver) = (Inbox::default(), LogonGate);
+    let log = LogFactory::try_new(&NullLogger)?;
+    let app_sender = Application::try_new(&sender)?;
+    let app_receiver = Application::try_new(&receiver)?;
+    let (store_sender, store_receiver) = (
+        MemoryMessageStoreFactory::new(),
+        MemoryMessageStoreFactory::new(),
+    );
+    let kind = FixSocketServerKind::MultiThreaded;
+    let mut acceptor = Acceptor::try_new(
+        &settings_receiver,
+        &app_receiver,
+        &store_receiver,
+        &log,
+        kind,
+    )?;
+    let mut initiator =
+        Initiator::try_new(&settings_sender, &app_sender, &store_sender, &log, kind)?;
+    acceptor.start()?;
+    initiator.start()?;
+    wait_until(Duration::from_secs(5), || sender.text_of("5").is_some());
+    initiator.stop()?;
+    acceptor.stop()?;
+
+    // QuickFIX puts its own prefix in front of the reason.
     assert_eq!(
-        rejects_for(Answer::IncorrectTagValue)?,
-        [reply("3", Some("5"), None)]
+        sender.text_of("5").as_deref(),
+        Some("Rejected Logon Attempt: outside trading hours")
     );
     Ok(())
 }

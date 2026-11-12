@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
   }
 
   printf(">> Acceptor STOP\n");
-  FixAcceptor_stop(acceptor);
+  FixAcceptor_stop(acceptor, 0);
 
   printf(">> Cleaning resources\n");
   FixAcceptor_delete(acceptor);

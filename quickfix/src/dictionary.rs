@@ -102,7 +102,9 @@ impl ForeignPropertySetter<&str> for Dictionary {
 
 impl ForeignPropertyGetter<i32> for Dictionary {
     fn ffi_get(&self, key: CString) -> Result<i32, QuickFixError> {
-        Ok(unsafe { FixDictionary_getInt(self.0, key.as_ptr()) })
+        let mut value = 0;
+        ffi_code_to_result(unsafe { FixDictionary_getInt(self.0, key.as_ptr(), &mut value) })?;
+        Ok(value)
     }
 }
 
@@ -114,7 +116,9 @@ impl ForeignPropertySetter<i32> for Dictionary {
 
 impl ForeignPropertyGetter<f64> for Dictionary {
     fn ffi_get(&self, key: CString) -> Result<f64, QuickFixError> {
-        Ok(unsafe { FixDictionary_getDouble(self.0, key.as_ptr()) })
+        let mut value = 0.0;
+        ffi_code_to_result(unsafe { FixDictionary_getDouble(self.0, key.as_ptr(), &mut value) })?;
+        Ok(value)
     }
 }
 

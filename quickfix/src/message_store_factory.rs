@@ -12,7 +12,22 @@ pub mod mysql;
 pub mod postgres;
 
 ///  Object can be converted as a foreign object representing a `MessageStore`.
-pub trait FfiMessageStoreFactory {
+///
+/// # Safety
+///
+/// `as_ffi_ptr` must return a pointer to a live QuickFIX `MessageStoreFactory` that stays valid
+/// for as long as `self` lives: acceptors and initiators hand it to C++, which dereferences it.
+/// Any other pointer is undefined behaviour, so implementing the trait is `unsafe` (R-P2-2):
+///
+/// ```compile_fail
+/// use quickfix::FfiMessageStoreFactory;
+/// use quickfix_ffi::FixMessageStoreFactory_t;
+/// struct Bogus(FixMessageStoreFactory_t);
+/// impl FfiMessageStoreFactory for Bogus {
+///     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t { self.0 }
+/// }
+/// ```
+pub unsafe trait FfiMessageStoreFactory {
     /// Get a representation of the message store as a FFI pointer.
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t;
 }
@@ -30,7 +45,8 @@ impl FileMessageStoreFactory {
     }
 }
 
-impl FfiMessageStoreFactory for FileMessageStoreFactory {
+// SAFETY: the pointer comes from `FixFileMessageStoreFactory_new` and is freed only by `drop`.
+unsafe impl FfiMessageStoreFactory for FileMessageStoreFactory {
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t {
         self.0
     }
@@ -53,7 +69,8 @@ impl MemoryMessageStoreFactory {
     }
 }
 
-impl FfiMessageStoreFactory for MemoryMessageStoreFactory {
+// SAFETY: the pointer comes from `FixMemoryMessageStoreFactory_new` and is freed only by `drop`.
+unsafe impl FfiMessageStoreFactory for MemoryMessageStoreFactory {
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t {
         self.0
     }
@@ -86,7 +103,8 @@ impl NullMessageStoreFactory {
     }
 }
 
-impl FfiMessageStoreFactory for NullMessageStoreFactory {
+// SAFETY: the pointer comes from `FixNullMessageStoreFactory_new` and is freed only by `drop`.
+unsafe impl FfiMessageStoreFactory for NullMessageStoreFactory {
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t {
         self.0
     }

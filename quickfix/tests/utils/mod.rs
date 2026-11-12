@@ -5,6 +5,7 @@ use std::net::TcpListener;
 
 pub mod checker;
 mod msg_const;
+pub mod raw_peer;
 mod recorder;
 mod settings_builder;
 

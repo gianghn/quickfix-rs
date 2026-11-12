@@ -61,8 +61,8 @@ fn test_int() {
     dict.set("int_3", 0).unwrap();
     assert_eq!(dict.get::<i32>("int_3").unwrap(), 0);
 
-    // Test with invalid key
-    assert_eq!(dict.get::<i32>("invalid").unwrap(), 0);
+    // Test with invalid key: an error, not a 0 that looks like a value (R-P2-2).
+    assert!(dict.get::<i32>("invalid").is_err());
 }
 
 #[test]
@@ -73,23 +73,24 @@ fn test_double() {
     dict.set("double_1", 56.8).unwrap();
     assert_eq!(dict.get::<f64>("double_1").unwrap(), 56.8);
 
+    // QuickFIX cannot read back what it wrote for NaN and infinities (R-P2-2).
     dict.set("double_2", f64::NAN).unwrap();
-    assert_eq!(dict.get::<f64>("double_2").unwrap(), 0.0);
+    assert!(dict.get::<f64>("double_2").is_err());
 
     dict.set("double_3", 0.0).unwrap();
     assert_eq!(dict.get::<f64>("double_3").unwrap(), 0.0);
 
     dict.set("double_4", f64::NEG_INFINITY).unwrap();
-    assert_eq!(dict.get::<f64>("double_4").unwrap(), 0.0);
+    assert!(dict.get::<f64>("double_4").is_err());
 
     dict.set("double_5", f64::INFINITY).unwrap();
-    assert_eq!(dict.get::<f64>("double_5").unwrap(), 0.0);
+    assert!(dict.get::<f64>("double_5").is_err());
 
     dict.set("double_6", -51.23).unwrap();
     assert_eq!(dict.get::<f64>("double_6").unwrap(), -51.23);
 
     // Test with invalid key
-    assert_eq!(dict.get::<f64>("invalid").unwrap(), 0.0);
+    assert!(dict.get::<f64>("invalid").is_err());
 }
 
 #[test]

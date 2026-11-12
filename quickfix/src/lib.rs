@@ -169,8 +169,12 @@ pub trait ConnectionHandler {
     /// Poll handler.
     fn poll(&mut self) -> Result<bool, QuickFixError>;
 
-    /// Stop handler.
+    /// Stop handler: send Logout on every session and wait (up to 10 s) for the answers.
     fn stop(&mut self) -> Result<(), QuickFixError>;
+
+    /// Stop handler: send Logout on every session and disconnect without waiting for the
+    /// answers. `Drop` uses this, so dropping never blocks on a silent counterparty (R-P2-2).
+    fn stop_force(&mut self) -> Result<(), QuickFixError>;
 
     /// Check if handler has sent logging message or not.
     fn is_logged_on(&self) -> Result<bool, QuickFixError>;

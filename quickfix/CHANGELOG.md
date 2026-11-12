@@ -33,6 +33,16 @@
   the existing methods (R-P1-3).
 - `quickfix-ffi`'s build no longer runs `git submodule update`: check the submodule out first.
   sccache/ccache are used only when `QUICKFIX_FFI_COMPILER_LAUNCHER` names one (R-P1-5).
+- `MsgFromAppError` and `MsgFromAdminError` variants carry what the counterparty sees:
+  `FieldNotFound { tag }`, `IncorrectDataFormat { tag }`, `IncorrectTagValue { tag }`,
+  `RejectLogon { text }` (R-P2-2).
+- `FfiMessageStoreFactory` is an `unsafe trait`: an implementation promises a live QuickFIX
+  pointer.
+- `ConnectionHandler` gains `stop_force`; `Drop` of an acceptor or initiator uses it, so it no
+  longer waits up to 10 s for Logout answers. Call `stop()` first for a graceful stop.
+- `Dictionary::get::<i32>` / `get::<f64>` return an error for a missing or unreadable key
+  instead of `Ok(0)`. The C functions take an out-parameter.
+- `SocketSendBufferSize` / `SocketReceiveBufferSize` hold a `u32` (refused above `i32::MAX`).
 
 ### Fixes
 
@@ -45,6 +55,9 @@
 - The C++ code is built with warnings shown and hardening flags (`-fstack-protector-strong`,
   frame pointers, `-D_FORTIFY_SOURCE=2` and stack-clash protection on Linux) (R-P1-5).
 - `Session::reset` documents that it wipes the store; see `doc/RUNBOOK_SEQNUM.md` (R-P1-7).
+- New: `Session::is_enabled`, `Session::refresh`, `Session::send_test_request`, and the
+  `TimestampPrecision` dictionary item (R-P2-2).
+- `FixSession_send` returns an error for a null message instead of dereferencing it.
 
 - `MsgFromAppError::UnsupportedMessageType` now reaches the peer as a BusinessMessageReject
   (35=j, 380=3); it used to be dropped without a reply (R-P0-5).

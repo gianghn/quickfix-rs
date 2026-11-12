@@ -182,9 +182,16 @@ extern "C" {
         buffer_len: u64,
     ) -> i8;
 
-    pub fn FixDictionary_getInt(obj: FixDictionary_t, key: *const ffi::c_char) -> i32;
+    #[must_use]
+    pub fn FixDictionary_getInt(obj: FixDictionary_t, key: *const ffi::c_char, out: *mut i32)
+        -> i8;
 
-    pub fn FixDictionary_getDouble(obj: FixDictionary_t, key: *const ffi::c_char) -> f64;
+    #[must_use]
+    pub fn FixDictionary_getDouble(
+        obj: FixDictionary_t,
+        key: *const ffi::c_char,
+        out: *mut f64,
+    ) -> i8;
 
     pub fn FixDictionary_getBool(obj: FixDictionary_t, key: *const ffi::c_char) -> i8;
 
@@ -244,6 +251,10 @@ extern "C" {
 
     pub fn FixApplication_delete(obj: FixApplication_t);
 
+    /// From inside `fromAdmin`/`fromApp`, before returning a reject code: the tag for RefTagID
+    /// and the text for a logon reject. Thread-local; `text` may be null.
+    pub fn FixApplication_setRejectDetail(tag: i32, text: *const ffi::c_char);
+
     // Socket acceptor
 
     pub fn FixAcceptor_new(
@@ -265,7 +276,7 @@ extern "C" {
     pub fn FixAcceptor_poll(obj: FixAcceptor_t) -> i8;
 
     #[must_use]
-    pub fn FixAcceptor_stop(obj: FixAcceptor_t) -> i8;
+    pub fn FixAcceptor_stop(obj: FixAcceptor_t, force: i8) -> i8;
 
     #[must_use]
     pub fn FixAcceptor_isLoggedOn(obj: FixAcceptor_t) -> i8;
@@ -301,7 +312,7 @@ extern "C" {
     pub fn FixInitiator_poll(obj: FixInitiator_t) -> i8;
 
     #[must_use]
-    pub fn FixInitiator_stop(obj: FixInitiator_t) -> i8;
+    pub fn FixInitiator_stop(obj: FixInitiator_t, force: i8) -> i8;
 
     #[must_use]
     pub fn FixInitiator_isLoggedOn(obj: FixInitiator_t) -> i8;
@@ -473,6 +484,10 @@ extern "C" {
     pub fn FixSession_isLoggedOn(session: FixSession_t) -> i8;
     #[must_use]
     pub fn FixSession_send(session: FixSession_t, msg: FixMessage_t) -> i8;
+    #[must_use]
+    pub fn FixSession_isEnabled(session: FixSession_t) -> i8;
+    #[must_use]
+    pub fn FixSession_refresh(session: FixSession_t) -> i8;
     #[must_use]
     pub fn FixSession_reset(session: FixSession_t) -> i8;
     #[must_use]

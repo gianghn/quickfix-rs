@@ -135,7 +135,7 @@ fn main() {
         }
 
         println!(">> Acceptor STOP");
-        assert_eq!(FixAcceptor_stop(acceptor), 0);
+        assert_eq!(FixAcceptor_stop(acceptor, 0), 0);
 
         println!(">> Cleaning resources");
         FixAcceptor_delete(acceptor);

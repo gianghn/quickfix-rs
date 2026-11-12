@@ -109,8 +109,8 @@ int8_t FixDictionary_setBool(FixDictionary_t *obj, const char *key, int8_t value
 int8_t FixDictionary_setDay(FixDictionary_t *obj, const char *key, int32_t value);
 int64_t FixDictionary_getStringLen(const FixDictionary_t *obj, const char *key);
 int8_t FixDictionary_readString(const FixDictionary_t *obj, const char *key, char *buffer, uint64_t buffer_len);
-int32_t FixDictionary_getInt(const FixDictionary_t *obj, const char *key);
-double FixDictionary_getDouble(const FixDictionary_t *obj, const char *key);
+int8_t FixDictionary_getInt(const FixDictionary_t *obj, const char *key, int32_t *out);
+int8_t FixDictionary_getDouble(const FixDictionary_t *obj, const char *key, double *out);
 int8_t FixDictionary_getBool(const FixDictionary_t *obj, const char *key);
 int32_t FixDictionary_getDay(const FixDictionary_t *obj, const char *key);
 int8_t FixDictionary_hasKey(const FixDictionary_t *obj, const char *key);
@@ -139,6 +139,9 @@ void FixLogFactory_delete(const FixLogFactory_t *obj);
 
 FixApplication_t *FixApplication_new(const void *data, const FixApplicationCallbacks_t *callbacks);
 void FixApplication_delete(const FixApplication_t *obj);
+// Called from inside a fromAdmin/fromApp callback before it returns a reject code: the tag for
+// RefTagID, the text for a logon reject's Logout (58). Thread-local; may be NULL text.
+void FixApplication_setRejectDetail(int32_t tag, const char *text);
 
 FixAcceptor_t *FixAcceptor_new(FixApplication_t *application, FixMessageStoreFactory_t *storeFactory,
                                const FixSessionSettings_t *settings, FixLogFactory_t *logFactory,
@@ -146,7 +149,7 @@ FixAcceptor_t *FixAcceptor_new(FixApplication_t *application, FixMessageStoreFac
 int8_t FixAcceptor_start(FixAcceptor_t *obj);
 int8_t FixAcceptor_block(FixAcceptor_t *obj);
 int8_t FixAcceptor_poll(FixAcceptor_t *obj);
-int8_t FixAcceptor_stop(FixAcceptor_t *obj);
+int8_t FixAcceptor_stop(FixAcceptor_t *obj, int8_t force);
 int8_t FixAcceptor_isLoggedOn(const FixAcceptor_t *obj);
 int8_t FixAcceptor_isStopped(const FixAcceptor_t *obj);
 FixSession_t *FixAcceptor_getSession(const FixAcceptor_t *obj, const FixSessionID_t *sessionId);
@@ -158,7 +161,7 @@ FixInitiator_t *FixInitiator_new(FixApplication_t *application, FixMessageStoreF
 int8_t FixInitiator_start(FixInitiator_t *obj);
 int8_t FixInitiator_block(FixInitiator_t *obj);
 int8_t FixInitiator_poll(FixInitiator_t *obj);
-int8_t FixInitiator_stop(FixInitiator_t *obj);
+int8_t FixInitiator_stop(FixInitiator_t *obj, int8_t force);
 int8_t FixInitiator_isLoggedOn(const FixInitiator_t *obj);
 int8_t FixInitiator_isStopped(const FixInitiator_t *obj);
 FixSession_t *FixInitiator_getSession(const FixInitiator_t *obj, const FixSessionID_t *sessionId);
@@ -228,6 +231,8 @@ FixSession_t *FixSession_lookup(const FixSessionID_t *session_id);
 int8_t FixSession_logout(FixSession_t *session);
 int8_t FixSession_isLoggedOn(FixSession_t *session);
 int8_t FixSession_send(FixSession_t *session, FixMessage_t *msg);
+int8_t FixSession_isEnabled(FixSession_t *session);
+int8_t FixSession_refresh(FixSession_t *session);
 int8_t FixSession_setNextSenderMsgSeqNum(FixSession_t *session, int32_t num);
 int8_t FixSession_setNextTargetMsgSeqNum(FixSession_t *session, int32_t num);
 int32_t FixSession_getExpectedTargetNum(FixSession_t *session);
