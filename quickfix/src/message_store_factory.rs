@@ -15,7 +15,7 @@ pub mod postgres;
 ///
 /// # Safety
 ///
-/// `as_ffi_ptr` must return a pointer to a live QuickFIX `MessageStoreFactory` that stays valid
+/// `as_ffi_ptr` must return a pointer to a live `QuickFIX` `MessageStoreFactory` that stays valid
 /// for as long as `self` lives: acceptors and initiators hand it to C++, which dereferences it.
 /// Any other pointer is undefined behaviour, so implementing the trait is `unsafe` (R-P2-2):
 ///

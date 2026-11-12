@@ -54,6 +54,10 @@
   `Message::get_field_bytes` reads data fields exactly (R-P1-3, R-P1-4).
 - The C++ code is built with warnings shown and hardening flags (`-fstack-protector-strong`,
   frame pointers, `-D_FORTIFY_SOURCE=2` and stack-clash protection on Linux) (R-P1-5).
+- Two clean builds give byte-identical static libraries (deterministic archives: `ar D` on
+  Linux, `ZERO_AR_DATE` on macOS); `scripts/split-debuginfo.sh` moves a release binary's debug
+  info into a `.debug` file (R-P1-5).
+- Every dictionary item, `ConnectionType` and `SSLProtocol` implement `Debug`.
 - `Session::reset` documents that it wipes the store; see `doc/RUNBOOK_SEQNUM.md` (R-P1-7).
 - New: `Session::is_enabled`, `Session::refresh`, `Session::send_test_request`, and the
   `TimestampPrecision` dictionary item (R-P2-2).

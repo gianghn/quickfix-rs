@@ -85,6 +85,19 @@ must ask for `FixSocketServerKind::MultiThreaded` instead (`src/port_fix/runner.
 `tests/support/src/connection_safety.rs`, `tests/support/src/checker.rs`). That gateway change is
 the owner's decision and is not made here.
 
+## Shipping a release binary (R-P1-5)
+
+The static libraries are reproducible: two clean builds give byte-identical `libquickfix.a` and
+`libquickfixbind.a` (`scripts/check-reproducible-build.sh`, in CI). libquickfix is always built
+`RelWithDebInfo`, but Cargo's default release profile (`debug = 0`, hence `strip = "debuginfo"`)
+drops that debug info at link time, so today's release binary has none. To keep it, the gateway's
+release profile sets `debug = "line-tables-only"` (Rust line tables plus the C++ debug info; Cargo
+then does not strip). Split it off before shipping: `scripts/split-debuginfo.sh <binary>` leaves
+the binary stripped with a `.gnu_debuglink` and writes `<binary>.debug`; ship the binary, archive
+the `.debug` file with the release (gdb and perf find it next to the binary or under
+`/usr/lib/debug`). `scripts/check-split-debuginfo.sh` runs this in CI. Cargo's `split-debuginfo`
+setting is not enough: it splits only the Rust code's debug info.
+
 ## Syncing from upstream next time
 
 1. Fast-forward `main` from upstream (`gh repo sync gianghn/quickfix-rs -b main`).

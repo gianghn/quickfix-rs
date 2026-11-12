@@ -96,6 +96,27 @@ fn set_cmake_flags(config: &mut Config, target_os: TargetOs, include_dir: Option
         if let Some(flags) = cmake_flags(target_os, env_var, include_dir) {
             config.define(format!("CMAKE_{lang}_FLAGS"), flags);
         }
+        // Archives without timestamps, owners or modes, so two builds give the same bytes (R-P1-5).
+        if target_os == TargetOs::Linux {
+            // `D` is the default only where binutils was built so (Ubuntu): ask for it.
+            config
+                .define(
+                    format!("CMAKE_{lang}_ARCHIVE_CREATE"),
+                    "<CMAKE_AR> qcD <TARGET> <LINK_FLAGS> <OBJECTS>",
+                )
+                .define(
+                    format!("CMAKE_{lang}_ARCHIVE_APPEND"),
+                    "<CMAKE_AR> qD <TARGET> <LINK_FLAGS> <OBJECTS>",
+                )
+                .define(
+                    format!("CMAKE_{lang}_ARCHIVE_FINISH"),
+                    "<CMAKE_RANLIB> -D <TARGET>",
+                );
+        }
+    }
+    // Apple's `ar` and `ranlib` have no `D`; they read this instead.
+    if target_os == TargetOs::Other {
+        config.env("ZERO_AR_DATE", "1");
     }
 }
 

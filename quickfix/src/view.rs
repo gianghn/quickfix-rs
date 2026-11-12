@@ -8,13 +8,13 @@ use std::{fmt, marker::PhantomData, mem::ManuallyDrop, ops::Deref};
 
 use crate::{FieldMap, Group, Header, IntoFixValue, Message, QuickFixError, Trailer};
 
-/// A FIX object borrowed from its owner: a message's header or trailer, or a message QuickFIX owns
-/// and hands to a callback.
+/// A FIX object borrowed from its owner: a message's header or trailer, or a message `QuickFIX`
+/// owns and hands to a callback.
 ///
 /// Reads go through `Deref` (`&T`); writes go through [`FieldMap`]. There is no `&mut T`.
 pub struct Borrowed<'a, T>(ManuallyDrop<T>, PhantomData<&'a mut T>);
 
-/// A message borrowed from QuickFIX in a callback.
+/// A message borrowed from `QuickFIX` in a callback.
 pub type MessageMut<'a> = Borrowed<'a, Message>;
 /// A header borrowed from its message.
 pub type HeaderMut<'a> = Borrowed<'a, Header>;
@@ -92,7 +92,7 @@ impl Borrowed<'_, Message> {
 
 /// A repeating-group entry borrowed from its message.
 ///
-/// QuickFIX stores entries as plain field maps, not `Group`s, so this view has no delimiter and
+/// `QuickFIX` stores entries as plain field maps, not `Group`s, so this view has no delimiter and
 /// reports the count tag it was looked up by (R-P0-7). Field access only touches the field map.
 pub struct GroupMut<'a> {
     inner: ManuallyDrop<Group>,
@@ -110,7 +110,8 @@ impl GroupMut<'_> {
         }
     }
 
-    /// The group's count tag (NoXXX), the tag it was looked up by.
+    /// The group's count tag (`NoXXX`), the tag it was looked up by.
+    #[must_use]
     pub fn field_id(&self) -> i32 {
         self.field_id
     }

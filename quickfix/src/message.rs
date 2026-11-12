@@ -44,6 +44,7 @@ impl Message {
     ///
     /// The caller must hand it back exactly once to [`Message::from_fix_message_t`], or the
     /// message leaks.
+    #[must_use]
     pub fn into_fix_message_t(self) -> FixMessage_t {
         ManuallyDrop::new(self).0
     }
@@ -74,9 +75,11 @@ impl Message {
 
     /// Read a field's bytes exactly as stored, NULs and non-UTF-8 bytes included (R-P1-3).
     /// `get_field` stops at the first NUL; use this one for data fields (95/96) and audit.
+    #[must_use]
     pub fn get_field_bytes(&self, tag: i32) -> Option<Vec<u8>> {
         let mut len = 0_u64;
-        let ptr = unsafe { FixMessage_getFieldBytes(self.0, tag, &mut len) };
+        // SAFETY: `self.0` is a live message and `len` a local the binding writes before returning.
+        let ptr = unsafe { FixMessage_getFieldBytes(self.0, tag, &raw mut len) };
         if ptr.is_null() {
             return None;
         }
@@ -258,6 +261,8 @@ impl Message {
     where
         F: FnOnce(&GroupMut<'_>) -> T,
     {
+        // SAFETY: `self.0` is a live message; the group pointer points into it, and the view given
+        // to `f` cannot outlive the `&self` borrow nor free the group.
         let ptr = unsafe { FixMessage_getGroupRef(self.0, index, tag) }?;
         Some(f(&GroupMut::new(Group(ptr), tag)))
     }
@@ -274,6 +279,8 @@ impl Message {
     where
         F: FnOnce(&mut GroupMut<'_>) -> T,
     {
+        // SAFETY: `self.0` is a live message; the group pointer points into it, and the view given
+        // to `f` cannot outlive the `&mut self` borrow nor free or swap out the group.
         let ptr = unsafe { FixMessage_getGroupRef(self.0, index, tag) }?;
         Some(f(&mut GroupMut::new(Group(ptr), tag)))
     }
