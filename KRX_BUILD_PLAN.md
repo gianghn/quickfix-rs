@@ -57,6 +57,12 @@ fix arrives, so CI stays green.
 | D8 | `clippy -D warnings` (R-P1-6) | **Decided by the owner, 12 Nov 2026.** Fix the warnings in upstream tests and examples, deny warnings on the whole workspace, on a pinned toolchain (1.99.1) bumped on purpose | phase 10 |
 | D9 | FFI naming lint | **Decided by the owner, 12 Nov 2026.** Keep `#![allow(non_camel_case_types, non_snake_case)]` in `quickfix-ffi` (names mirror the C ABI); the owner adds a narrow exemption for FFI crate roots to the central policy | phase 10 |
 | D10 | Phase 10 size | R-P2-2 is eight changes, several new API; split into 10a (build, CI, docs: R-P1-5, R-P1-6, R-P1-7, R-P2-7) and 10b (R-P2-2) | phase 10 |
+| D11 | C++ fork work (R-P0-12, R-P0-13, races) | **Decided by the owner, 12 Nov 2026:** not now; the 11 R-P0-13 tests stay red and TSan stays report-only until then | — |
+| D12 | Production distro | **Decided by the owner, 12 Nov 2026:** RHEL/Rocky Linux 9; CI gets a Rocky 9 job (phase 13) | phase 13 |
+| D13 | Fuzzing | **Decided by the owner, 12 Nov 2026:** a separate `fuzz/` crate outside the workspace (`libfuzzer-sys` allowed) with a short nightly run (phase 14) | phase 14 |
+| D14 | Gateway work | **Decided by the owner, 12 Nov 2026:** done by the gateway team from `KRX_GATEWAY_HANDOVER.md`, not in this repo | — |
+| D15 | msgkrx licence; SharePoint link | **Decided by the owner, 12 Nov 2026:** licence stays `MIT OR Apache-1.1`. The repo is a public fork: history is not rewritten; the owner revokes the old SharePoint link | — |
+| D16 | Upstream (R-P2-4, R-P2-6) | **Decided by the owner, 12 Nov 2026:** this stays our fork only: no fast-forward of `main`, nothing sent upstream | — |
 
 ## 4. Phases
 
