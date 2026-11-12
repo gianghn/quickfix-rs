@@ -86,7 +86,7 @@ let mut acceptor = Acceptor::try_new(
     &app,
     &store_factory,
     &log_factory,
-    FixSocketServerKind::SingleThreaded,
+    FixSocketServerKind::MultiThreaded,
 )?;
 
 // Start session.

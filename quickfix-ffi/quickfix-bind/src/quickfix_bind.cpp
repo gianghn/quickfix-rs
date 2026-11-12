@@ -188,34 +188,24 @@ _IMPL_CLASS_STUB(ThreadedSSLSocketInitiator, StubInitiator);
 extern "C" {
 namespace FIX {
 
-static thread_local char *lastError = nullptr;
+// A std::string, not a raw buffer: a message nobody read is freed when its thread exits (R-P1-2).
+static thread_local std::string lastError;
+static thread_local bool hasLastError = false;
 static thread_local int8_t lastErrorCode = 0;
 
 static void Fix_setLastError(std::exception &ex, int8_t code) {
-  // Release previously set error if any
-  Fix_clearLastErrorMessage();
-
-  // Update last error code
   lastErrorCode = code;
-
-  // Get error message and copy it to thread local storage.
-  std::string msg = ex.what();
-  size_t bufferLen = msg.size() + 1;
-
-  lastError = new char[bufferLen];
-  memset(lastError, 0, bufferLen);
-  strncpy(lastError, msg.c_str(), msg.size());
+  lastError = ex.what();
+  hasLastError = true;
 }
 
-const char *Fix_getLastErrorMessage() { return lastError; }
+const char *Fix_getLastErrorMessage() { return hasLastError ? lastError.c_str() : nullptr; }
 
 int8_t Fix_getLastErrorCode() { return lastErrorCode; }
 
 void Fix_clearLastErrorMessage() {
-  if (lastError) {
-    delete[] lastError;
-    lastError = nullptr;
-  }
+  lastError.clear();
+  hasLastError = false;
 }
 
 class ApplicationBind : public Application {
