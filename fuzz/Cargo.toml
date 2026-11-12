@@ -1,0 +1,58 @@
+# cargo-fuzz crate (go-live phase 14). Its own workspace, so normal builds and the
+# workspace Cargo.lock never see libfuzzer-sys. Run it with nightly: see README.md.
+[package]
+name = "quickfix-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "libFuzzer targets for QuickFIX message parsing"
+
+[package.metadata]
+cargo-fuzz = true
+
+[package.metadata.policy]
+memory-profile = "allocation-conscious"
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+quickfix = { path = "../quickfix", default-features = false }
+
+[features]
+# R-P0-13 (95=<n> over-read in C++) is open: skip inputs that would only rediscover it, so a
+# nightly run looks for new bugs. Remove the feature once the C++ fix is pinned.
+default = ["skip-r-p0-13"]
+skip-r-p0-13 = []
+
+[[bin]]
+name = "parse_no_dict"
+path = "fuzz_targets/parse_no_dict.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_fix44"
+path = "fuzz_targets/parse_fix44.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_fix44krx"
+path = "fuzz_targets/parse_fix44krx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_fixt11_fix50"
+path = "fuzz_targets/parse_fixt11_fix50.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+overflow-checks = true
+debug = 1
+
+[workspace]
