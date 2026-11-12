@@ -1,5 +1,6 @@
 #include "quickfix_bind.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <memory>
@@ -89,6 +90,7 @@ _IMPL_CLASS_STUB(ThreadedSSLSocketInitiator, StubInitiator);
     return (_VAL_);
 
 #define CATCH_OR_RETURN(_VAL_, _XXX_)                                                                                  \
+  Fix_resetLastError();                                                                                                \
   try {                                                                                                                \
     _XXX_                                                                                                              \
   } catch (FIX::DataDictionaryNotFound & ex) {                                                                         \
@@ -213,6 +215,12 @@ int8_t Fix_getLastErrorCode() { return lastErrorCode; }
 void Fix_clearLastErrorMessage() {
   lastError.clear();
   hasLastError = false;
+}
+
+// Every wrapper starts here, so a failure reports its own error, never an earlier call's (R-P1-2).
+static void Fix_resetLastError() {
+  lastErrorCode = 0;
+  Fix_clearLastErrorMessage();
 }
 
 class ApplicationBind : public Application {
@@ -343,19 +351,19 @@ public:
   void onIncoming(const std::string &msg) override {
     RETURN_IF_NULL(callbacks);
     RETURN_IF_NULL(callbacks->onIncoming);
-    callbacks->onIncoming(data, sessionId, msg.c_str());
+    callbacks->onIncoming(data, sessionId, msg.data(), msg.size());
   }
 
   void onOutgoing(const std::string &msg) override {
     RETURN_IF_NULL(callbacks);
     RETURN_IF_NULL(callbacks->onOutgoing);
-    callbacks->onOutgoing(data, sessionId, msg.c_str());
+    callbacks->onOutgoing(data, sessionId, msg.data(), msg.size());
   }
 
   void onEvent(const std::string &msg) override {
     RETURN_IF_NULL(callbacks);
     RETURN_IF_NULL(callbacks->onEvent);
-    callbacks->onEvent(data, sessionId, msg.c_str());
+    callbacks->onEvent(data, sessionId, msg.data(), msg.size());
   }
 };
 
@@ -500,7 +508,7 @@ int8_t FixDictionary_readString(const Dictionary *obj, const char *key, char *bu
       return ERRNO_BUFFER_TO_SMALL;
     }
 
-    strncpy(buffer, value.c_str(), buffer_len);
+    std::copy(value.begin(), value.end(), buffer);
     buffer[value.size()] = '\0';
 
     return 0;
@@ -826,6 +834,17 @@ const char *FixMessage_getField(const Message *obj, int32_t tag) {
   CATCH_OR_RETURN_NULL({ return obj->getField(tag).c_str(); });
 }
 
+// The field's bytes and their count, NULs included (R-P1-3). Valid until the field changes.
+const char *FixMessage_getFieldBytes(const Message *obj, int32_t tag, uint64_t *len) {
+  RETURN_VAL_IF_NULL(obj, NULL);
+  RETURN_VAL_IF_NULL(len, NULL);
+  CATCH_OR_RETURN_NULL({
+    const std::string &value = obj->getField(tag);
+    *len = value.size();
+    return value.data();
+  });
+}
+
 int8_t FixMessage_setField(Message *obj, int32_t tag, const char *value) {
   RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
   RETURN_VAL_IF_NULL(value, ERRNO_INVAL);
@@ -868,7 +887,8 @@ int8_t FixMessage_readString(const FixMessage_t *obj, char *buffer, uint64_t buf
       return ERRNO_BUFFER_TO_SMALL;
     }
 
-    strncpy(buffer, value.c_str(), buffer_len);
+    // Every byte, NULs included: strncpy stopped at the first NUL and zero-filled the rest (R-P1-4).
+    std::copy(value.begin(), value.end(), buffer);
     buffer[value.size()] = '\0';
 
     return 0;

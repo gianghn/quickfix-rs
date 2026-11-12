@@ -9,10 +9,7 @@ use quickfix_ffi::{
     FixLogCallbacks_t, FixLogFactory_delete, FixLogFactory_new, FixLogFactory_t, FixSessionID_t,
 };
 
-use crate::{
-    utils::{abort_on_panic, from_ffi_str},
-    QuickFixError, SessionId,
-};
+use crate::{utils::abort_on_panic, QuickFixError, SessionId};
 
 /// Log event that can occurs in quickfix library.
 ///
@@ -36,6 +33,36 @@ pub trait LogCallback: Send + Sync {
 
     /// Other FIX event has occurred.
     fn on_event(&self, _session_id: Option<&SessionId>, _msg: &str) {}
+
+    /// New incoming message, exactly as on the wire (R-P1-3): NULs and non-UTF-8 bytes included.
+    ///
+    /// The default passes it to [`LogCallback::on_incoming`], with invalid UTF-8 replaced by
+    /// U+FFFD. Override it for an exact audit trail.
+    fn on_incoming_bytes(&self, session_id: Option<&SessionId>, msg: &[u8]) {
+        self.on_incoming(session_id, &String::from_utf8_lossy(msg));
+    }
+
+    /// New outgoing message, exactly as on the wire. See [`LogCallback::on_incoming_bytes`].
+    fn on_outgoing_bytes(&self, session_id: Option<&SessionId>, msg: &[u8]) {
+        self.on_outgoing(session_id, &String::from_utf8_lossy(msg));
+    }
+
+    /// Other FIX event, as bytes. See [`LogCallback::on_incoming_bytes`].
+    fn on_event_bytes(&self, session_id: Option<&SessionId>, msg: &[u8]) {
+        self.on_event(session_id, &String::from_utf8_lossy(msg));
+    }
+}
+
+/// The `len` bytes QuickFIX passed; empty for a null pointer.
+///
+/// # Safety
+///
+/// `ptr` must point to `len` readable bytes that live for the call, or be null.
+unsafe fn log_bytes<'a>(ptr: *const ffi::c_char, len: u64) -> &'a [u8] {
+    match usize::try_from(len) {
+        Ok(len) if !ptr.is_null() => unsafe { std::slice::from_raw_parts(ptr.cast(), len) },
+        _ => &[],
+    }
 }
 
 /// Logging factory.
@@ -68,13 +95,14 @@ where
         data: *const ffi::c_void,
         session_id_ptr: Option<FixSessionID_t>,
         msg_ptr: *const ffi::c_char,
+        msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
-        let msg = unsafe { from_ffi_str(msg_ptr) };
+        let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
-            this.on_incoming(session_id.as_deref(), msg);
+            this.on_incoming_bytes(session_id.as_deref(), msg);
         });
     }
 
@@ -82,13 +110,14 @@ where
         data: *const ffi::c_void,
         session_id_ptr: Option<FixSessionID_t>,
         msg_ptr: *const ffi::c_char,
+        msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
-        let msg = unsafe { from_ffi_str(msg_ptr) };
+        let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
-            this.on_outgoing(session_id.as_deref(), msg);
+            this.on_outgoing_bytes(session_id.as_deref(), msg);
         });
     }
 
@@ -96,13 +125,14 @@ where
         data: *const ffi::c_void,
         session_id_ptr: Option<FixSessionID_t>,
         msg_ptr: *const ffi::c_char,
+        msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
-        let msg = unsafe { from_ffi_str(msg_ptr) };
+        let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
-            this.on_event(session_id.as_deref(), msg);
+            this.on_event_bytes(session_id.as_deref(), msg);
         });
     }
 }

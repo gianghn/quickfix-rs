@@ -72,9 +72,25 @@ impl Session<'static> {
                 inner,
                 phantom_container: PhantomData,
             }),
-            None => Err(QuickFixError::from_last_error()),
+            // Not `from_last_error`: no exception was raised, so the thread's last error belongs
+            // to some earlier call (R-P1-2).
+            None => Err(QuickFixError::SessionNotFound(format!(
+                "No session found: {session_id:?}"
+            ))),
         }
     }
+}
+
+/// A seqnum as QuickFIX takes it: from 1 to `i32::MAX`.
+fn seq_num_arg(num: u64) -> Result<i32, QuickFixError> {
+    i32::try_from(num).ok().filter(|n| *n >= 1).ok_or_else(|| {
+        QuickFixError::invalid_argument(format!("seqnum {num} is not in 1..={}", i32::MAX))
+    })
+}
+
+/// A seqnum the binding returned: negative values are its error codes, not seqnums.
+fn seq_num_result(code: i32) -> Result<u64, QuickFixError> {
+    u64::try_from(code).map_err(|_| QuickFixError::from_last_error())
 }
 
 impl Session<'_> {
@@ -104,20 +120,45 @@ impl Session<'_> {
         ffi_code_to_result(unsafe { FixSession_logon(self.inner) })
     }
     /// Set next sender message sequence number.
-    pub fn set_next_sender_msg_seq_num(&mut self, num: i32) -> Result<(), QuickFixError> {
+    ///
+    /// QuickFIX does not take the session lock here: call it while the session is logged out,
+    /// or a concurrent send may use the old number.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidArgument` when `num` is 0 or above `i32::MAX`; the store's error otherwise.
+    pub fn set_next_sender_msg_seq_num(&mut self, num: u64) -> Result<(), QuickFixError> {
+        let num = seq_num_arg(num)?;
         ffi_code_to_result(unsafe { FixSession_setNextSenderMsgSeqNum(self.inner, num) })
     }
-    /// Set next target message sequence number.
-    pub fn set_next_target_msg_seq_num(&mut self, num: i32) -> Result<(), QuickFixError> {
+
+    /// Set next target message sequence number. Same rules as
+    /// [`Session::set_next_sender_msg_seq_num`].
+    ///
+    /// # Errors
+    ///
+    /// `InvalidArgument` when `num` is 0 or above `i32::MAX`; the store's error otherwise.
+    pub fn set_next_target_msg_seq_num(&mut self, num: u64) -> Result<(), QuickFixError> {
+        let num = seq_num_arg(num)?;
         ffi_code_to_result(unsafe { FixSession_setNextTargetMsgSeqNum(self.inner, num) })
     }
+
     /// Get expected target message sequence number.
-    pub fn get_expected_target_num(&self) -> i32 {
-        unsafe { quickfix_ffi::FixSession_getExpectedTargetNum(self.inner) }
+    ///
+    /// # Errors
+    ///
+    /// The binding's error when the store cannot be read (it used to come back as a seqnum).
+    pub fn get_expected_target_num(&self) -> Result<u64, QuickFixError> {
+        seq_num_result(unsafe { quickfix_ffi::FixSession_getExpectedTargetNum(self.inner) })
     }
+
     /// Get expected sender message sequence number.
-    pub fn get_expected_sender_num(&self) -> i32 {
-        unsafe { quickfix_ffi::FixSession_getExpectedSenderNum(self.inner) }
+    ///
+    /// # Errors
+    ///
+    /// The binding's error when the store cannot be read (it used to come back as a seqnum).
+    pub fn get_expected_sender_num(&self) -> Result<u64, QuickFixError> {
+        seq_num_result(unsafe { quickfix_ffi::FixSession_getExpectedSenderNum(self.inner) })
     }
 }
 

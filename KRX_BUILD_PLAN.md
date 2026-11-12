@@ -87,8 +87,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 5 | `krx/golive-p5` | PR #7 | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
 | 6 | `krx/golive-p6` | PR #8 | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
 | 7 | `krx/golive-p7` | PR #9 | 4 `compile_fail` doctests compiled → do not; `with_group` field id test enabled |
-| 8 | `krx/golive-p8` | done, PR pending | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
-| 9 | `krx/golive-p9` | not started | |
+| 8 | `krx/golive-p8` | PR #10 | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
+| 9 | `krx/golive-p9` | done, PR pending | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
 | 10 | `krx/golive-p10` | not started | |
 
 ## 6. Handover notes
@@ -286,3 +286,27 @@ as raw strings (`get_field`); adding an `Unknown(String)` variant to every enum 
 API change.
 **Breaking for the gateway:** `From<Message>` for generated messages is gone, use `try_from`;
 custom `IntoFixValue` impls return `QuickFixError`.
+
+### Handover 9 — 2026-11-12
+**Built:** R-P1-1: `set_next_*_msg_seq_num(u64)` rejects 0 and values above `i32::MAX`;
+`get_expected_*_num() -> Result<u64, _>` (negative = the binding's error code, no longer a
+seqnum); docs say to call the setters while logged out (QuickFIX takes no session lock there).
+R-P1-2 (rest): every binding wrapper resets the error state on entry (`Fix_resetLastError`), and
+`Session::lookup` reports `SessionNotFound` itself instead of the thread's last error. R-P1-3:
+the log callback ABI passes `(ptr, len)`; `LogCallback` gains `on_*_bytes` (default: lossy text
+to the old `&str` methods, so existing loggers compile); new `Message::get_field_bytes` and
+`FixMessage_getFieldBytes`. R-P1-4: both `readString` copies use `std::copy` of every byte.
+**Red → green:** `test_seqnum.rs` (4 tests: set 0 / above `i32::MAX` rejected, get returns what
+was set, lookup after an unrelated error is `SessionNotFound`) did not compile on the old API;
+`quickfix-ffi/tests/test_last_error.rs`: a successful call left code -15 → 0;
+`test_wire_bytes.rs` (raw TCP peer sends `58=caf\xE9` and `95=3|96=a\0b`): with the log ABI and
+`get_field_bytes` in, the only failure left was "to_fix_bytes zero-filled after the NUL"
+(R-P1-4); green after `std::copy`.
+**Checks:** `cargo test --workspace` (macOS) green, no warnings; doctests 8/8;
+`scripts/san.sh address` exit 0; fmt ok.
+**Breaking:** `set_next_*`/`get_expected_*` signatures (u64, `Result`); the C log callbacks take
+a length (C and Rust FFI users).
+**Raised with the owner:** the hook rejects upstream's `#![allow(non_camel_case_types,
+non_snake_case)]` at the top of `quickfix-ffi/src/lib.rs`, which exists because the FFI names
+mirror the C ABI (`FixMessage_t`, `onIncoming`). Removing it means renaming the whole C binding;
+not done.

@@ -46,16 +46,19 @@ static const FixApplicationCallbacks_t APP_CALLBACKS = {
     .fromApp = customFromApp,
 };
 
-static void customOnIncoming(const void *data, const FixSessionID_t *sessionId, const char *msg) {
-  printf("customOnIncoming: %p %p: %s\n", data, sessionId, msg);
+static void customOnIncoming(const void *data, const FixSessionID_t *sessionId, const char *msg,
+                             uint64_t len) {
+  printf("customOnIncoming: %p %p: %.*s\n", data, sessionId, (int)len, msg);
 }
 
-static void customOnOutgoing(const void *data, const FixSessionID_t *sessionId, const char *msg) {
-  printf("customOnOutgoing: %p %p: %s\n", data, sessionId, msg);
+static void customOnOutgoing(const void *data, const FixSessionID_t *sessionId, const char *msg,
+                             uint64_t len) {
+  printf("customOnOutgoing: %p %p: %.*s\n", data, sessionId, (int)len, msg);
 }
 
-static void customOnEvent(const void *data, const FixSessionID_t *sessionId, const char *msg) {
-  printf("customOnEvent: %p %p: %s\n", data, sessionId, msg);
+static void customOnEvent(const void *data, const FixSessionID_t *sessionId, const char *msg,
+                          uint64_t len) {
+  printf("customOnEvent: %p %p: %.*s\n", data, sessionId, (int)len, msg);
 }
 
 static const FixLogCallbacks_t LOG_CALLBACKS = {

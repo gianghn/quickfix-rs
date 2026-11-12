@@ -89,20 +89,24 @@ pub struct FixApplicationCallbacks_t {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct FixLogCallbacks_t {
+    /// `msg` is `len` bytes, not NUL-terminated: FIX data fields may hold NULs.
     pub onIncoming: extern "C" fn(
         data: *const ffi::c_void,
         sessionId: Option<FixSessionID_t>,
         msg: *const ffi::c_char,
+        len: u64,
     ),
     pub onOutgoing: extern "C" fn(
         data: *const ffi::c_void,
         sessionId: Option<FixSessionID_t>,
         msg: *const ffi::c_char,
+        len: u64,
     ),
     pub onEvent: extern "C" fn(
         data: *const ffi::c_void,
         sessionId: Option<FixSessionID_t>,
         msg: *const ffi::c_char,
+        len: u64,
     ),
 }
 
@@ -355,6 +359,13 @@ extern "C" {
 
     #[must_use]
     pub fn FixMessage_getField(obj: FixMessage_t, tag: i32) -> NullableCStr;
+
+    /// The field's bytes (`*len` of them, NULs included); null when the field is missing.
+    pub fn FixMessage_getFieldBytes(
+        obj: FixMessage_t,
+        tag: i32,
+        len: *mut u64,
+    ) -> *const ffi::c_char;
 
     #[must_use]
     pub fn FixMessage_removeField(obj: FixMessage_t, tag: i32) -> i8;
