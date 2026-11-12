@@ -106,12 +106,13 @@ jobs:
         run: scripts/check-split-debuginfo.sh
 
   # The gateway ships on RHEL/Rocky Linux 9: gcc 11, binutils 2.35 (`ar` not deterministic by
-  # default, unlike Ubuntu's), glibc 2.34. Image pinned by digest, like the actions by SHA.
+  # default, unlike Ubuntu's), glibc 2.34. Image pinned by digest, like the actions by SHA; the
+  # maintained rockylinux/rockylinux repo (Docker Hub's `rockylinux` stopped at 9.3).
   rocky9:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
-      image: rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6
+      image: rockylinux/rockylinux:9@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
     steps:
       # Before checkout: without git, actions/checkout downloads a tarball with no submodules.
       # perl-Digest-SHA: `shasum` for check-reproducible-build.sh.
