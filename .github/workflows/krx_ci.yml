@@ -113,6 +113,9 @@ jobs:
     timeout-minutes: 60
     container:
       image: rockylinux/rockylinux:9@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
+      # This image sets no PATH; a step's GITHUB_PATH entry would otherwise become the whole PATH.
+      env:
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       # Before checkout: without git, actions/checkout downloads a tarball with no submodules.
       # perl-Digest-SHA: `shasum` for check-reproducible-build.sh.
