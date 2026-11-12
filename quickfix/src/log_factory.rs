@@ -3,28 +3,31 @@ use std::{
     io::{self, Write},
     marker::PhantomData,
     mem::ManuallyDrop,
-    panic::catch_unwind,
 };
 
 use quickfix_ffi::{
     FixLogCallbacks_t, FixLogFactory_delete, FixLogFactory_new, FixLogFactory_t, FixSessionID_t,
 };
 
-use crate::{utils::from_ffi_str, QuickFixError, SessionId};
+use crate::{
+    utils::{abort_on_panic, from_ffi_str},
+    QuickFixError, SessionId,
+};
 
 /// Log event that can occurs in quickfix library.
 ///
 /// Each callback will be called based on session / socket lifecycle.
-#[allow(unused_variables)]
+/// A panic in any of these methods aborts the process: a log that silently loses lines is an
+/// audit-trail hole.
 pub trait LogCallback {
     /// New incoming messages is available.
-    fn on_incoming(&self, session_id: Option<&SessionId>, msg: &str) {}
+    fn on_incoming(&self, _session_id: Option<&SessionId>, _msg: &str) {}
 
     /// New outgoing message will be sent.
-    fn on_outgoing(&self, session_id: Option<&SessionId>, msg: &str) {}
+    fn on_outgoing(&self, _session_id: Option<&SessionId>, _msg: &str) {}
 
     /// Other FIX event has occurred.
-    fn on_event(&self, session_id: Option<&SessionId>, msg: &str) {}
+    fn on_event(&self, _session_id: Option<&SessionId>, _msg: &str) {}
 }
 
 /// Logging factory.
@@ -61,7 +64,7 @@ where
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
         let msg = unsafe { from_ffi_str(msg_ptr) };
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_incoming(session_id.as_deref(), msg);
         });
@@ -75,7 +78,7 @@ where
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
         let msg = unsafe { from_ffi_str(msg_ptr) };
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_outgoing(session_id.as_deref(), msg);
         });
@@ -89,7 +92,7 @@ where
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
         let msg = unsafe { from_ffi_str(msg_ptr) };
 
-        let _ = catch_unwind(|| {
+        abort_on_panic(|| {
             let this = unsafe { &*(data as *const C) };
             this.on_event(session_id.as_deref(), msg);
         });
