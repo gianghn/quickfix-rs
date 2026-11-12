@@ -280,11 +280,17 @@ pub trait ForeignPropertySetter<T> {
 #[non_exhaustive]
 pub enum FixSocketServerKind {
     /// Single threaded version of Acceptor and Initiator.
-    #[default]
+    #[deprecated(
+        note = "QuickFIX's plain socket classes crash at random in stop() (KRX R-P0-8); use MultiThreaded"
+    )]
     SingleThreaded,
-    /// Multi threaded version of Acceptor and Initiator.
+    /// Multi threaded version of Acceptor and Initiator. The default (KRX fork, R-P0-8).
+    #[default]
     MultiThreaded,
     /// Single threaded version of Acceptor and Initiator with SSL support.
+    ///
+    /// Avoid it: it builds the same plain socket classes as `SingleThreaded` (KRX R-P0-8). Not
+    /// `#[deprecated]` only because the crate must name one single-threaded kind to tell them apart.
     #[cfg(feature = "build-with-ssl")]
     SslSingleThreaded,
     /// Multi threaded version of Acceptor and Initiator with SSL support.
@@ -293,25 +299,21 @@ pub enum FixSocketServerKind {
 }
 
 impl FixSocketServerKind {
+    // Neither helper names the deprecated `SingleThreaded`: it is what the wildcards stand for.
     fn is_multi_threaded(self) -> bool {
         match self {
-            Self::SingleThreaded => false,
             Self::MultiThreaded => true,
             #[cfg(feature = "build-with-ssl")]
-            Self::SslSingleThreaded => false,
-            #[cfg(feature = "build-with-ssl")]
             Self::SslMultiThreaded => true,
+            _ => false,
         }
     }
 
     fn is_ssl_enabled(self) -> bool {
         match self {
-            Self::SingleThreaded => false,
-            Self::MultiThreaded => false,
             #[cfg(feature = "build-with-ssl")]
-            Self::SslSingleThreaded => true,
-            #[cfg(feature = "build-with-ssl")]
-            Self::SslMultiThreaded => true,
+            Self::SslSingleThreaded | Self::SslMultiThreaded => true,
+            _ => false,
         }
     }
 }

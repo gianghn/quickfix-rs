@@ -7,6 +7,7 @@ use quickfix_ffi::{
 };
 
 use crate::{
+    session::while_deleting,
     utils::{ffi_code_to_bool, ffi_code_to_result},
     Application, ApplicationCallback, ConnectionHandler, FfiMessageStoreFactory,
     FixSocketServerKind, LogCallback, LogFactory, QuickFixError, Session, SessionContainer,
@@ -121,6 +122,6 @@ where
 {
     fn drop(&mut self) {
         let _ = self.stop();
-        unsafe { FixAcceptor_delete(self.inner) }
+        while_deleting(|| unsafe { FixAcceptor_delete(self.inner) })
     }
 }

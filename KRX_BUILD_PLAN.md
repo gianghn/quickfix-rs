@@ -84,8 +84,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 2 | `krx/golive-p2` | PR #3 | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
 | 3 | `krx/golive-p3` | PR #4 | 4 red (10/10 panics survived; from_app panic consumed; no 35=j for -6; SSL stub killed the process) → all green |
 | 4 | `krx/golive-p4` | PR #5 | 6 ASan overflows + 2 new tests red (field id 3074920) → known-red list empty, ASan exit 0; `with_group` ref part red `#[ignore]` until phase 7 |
-| 5 | `krx/golive-p5` | done, PR pending | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
-| 6 | `krx/golive-p6` | not started | |
+| 5 | `krx/golive-p5` | PR #7 | 3 `compile_fail` doctests compiled + round trip did not build → all green, ASan exit 0 |
+| 6 | `krx/golive-p6` | done, PR pending | default was SingleThreaded; drop-while-sending UAF 1/3 under ASan → 0/10 |
 | 7 | `krx/golive-p7` | not started | |
 | 8 | `krx/golive-p8` | not started | |
 | 9 | `krx/golive-p9` | not started | |
@@ -210,3 +210,27 @@ All in the C++ library; none on the Rust side. For the C++ fork:
 | `Mutex.h:62/63/78` `FIX::Mutex::lock/unlock` | recursive lock reads its owner without synchronisation | every session test (62 reports) |
 | `SocketAcceptor.cpp:130` `onStart` / `SocketServer::~SocketServer` vs `close()` | plain acceptor freed while `stop()` closes it (R-P2-3) | SingleThreaded tests |
 | `SessionState.h:59-68` `receivedLogon`, `sentLogon`, `enabled`, `lastSentTime` | logon flags and timestamps written by `send`/logon on one thread, read by `next`/`isLoggedOn` on another | MultiThreaded too (`test_callback_failures`) |
+
+### Handover 6 — 2026-11-12
+**Built:** R-P0-6: a process-wide `SESSION_GATE` (`session.rs`). `send_to_target` and
+`Session::send` hold it shared (`while_sending`; a send nested in a callback on the same thread
+skips it); `Acceptor`/`Initiator` `Drop` calls `stop()` first, then deletes under the exclusive
+gate (`while_deleting`). Taking the gate before `stop()` would deadlock: stop joins QuickFIX's
+threads, whose callbacks may send. R-P0-8 / D1: `MultiThreaded` is the default and
+`SingleThreaded` is `#[deprecated]`; tests, examples, README and doc example use `MultiThreaded`;
+the `SingleThreaded` send/receive test is gone; the checkers wait for **both** sides to log on
+(with a 10 s bound) instead of either.
+Also the R-P0-1 follow-up from phase 3: `from_app_panic_message_is_delivered_after_restart`
+(both sides on FileStores; after the child aborts, a restarted pair delivers the message).
+**Red → green:** `fix_socket_server_kind_default_is_multi_threaded` was `SingleThreaded`.
+`dropping_initiator_and_acceptor_while_another_thread_sends_is_safe` (10 drop/recreate cycles
+while a thread sends): ASan heap-use-after-free in `MemoryStore::set` in 1 of 3 runs before; 0 in
+10 runs after. The restart test was green on first run: the phase 3 fix was already in, so it is
+a regression test, not a red-first one.
+**Checks:** `cargo test --workspace` (macOS) green, no warnings; `scripts/san.sh address` exit 0;
+callback tests under ASan 8/8; fmt ok; clippy: nothing in changed files.
+**Away from the plan:** `SslSingleThreaded` is documented as "avoid", not `#[deprecated]`: the
+lint fires inside this crate too, and the crate must name one single-threaded kind to tell the
+two apart; `#[allow(deprecated)]` is not allowed (policy). The go-live plan asks for 50 seeded
+runs of the drop test; 10 ran here, CI runs it on every push.
+**Decisions taken:** none new (D1 by the owner).

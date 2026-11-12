@@ -1,10 +1,26 @@
-use std::{sync::Mutex, thread, time::Duration};
+use std::{
+    sync::Mutex,
+    thread,
+    time::{Duration, Instant},
+};
 
 use quickfix::*;
 
 use super::{build_news, build_settings, ServerType};
 
 pub static GLOBAL_LOCK: Mutex<u8> = Mutex::new(0);
+
+/// Polls `done` until it holds or `timeout` passes; returns its last answer.
+pub fn wait_until(timeout: Duration, mut done: impl FnMut() -> bool) -> bool {
+    let start = Instant::now();
+    while !done() {
+        if start.elapsed() > timeout {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    true
+}
 
 /// Check full FIX application lifecycle:
 /// 1. Start and connect Acceptor <-> Initiator.
@@ -54,10 +70,13 @@ pub fn run(
     socket_receiver.start()?;
     socket_sender.start()?;
 
-    // Wait for login completion
-    while !socket_sender.is_logged_on()? && !socket_receiver.is_logged_on()? {
-        thread::sleep(Duration::from_millis(50));
-    }
+    // Wait until both sides are logged on, not either (R-P0-8: sending before the receiver
+    // was up raced its logon).
+    let logged_on = wait_until(Duration::from_secs(10), || {
+        socket_sender.is_logged_on().unwrap_or(false)
+            && socket_receiver.is_logged_on().unwrap_or(false)
+    });
+    assert!(logged_on, "both sides logged on");
 
     // Send message in both direction
     let news = build_news("Hello", &[])?;

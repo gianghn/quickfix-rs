@@ -34,14 +34,14 @@ fn main() -> Result<(), QuickFixError> {
             &app,
             &store_factory,
             &log_factory,
-            FixSocketServerKind::SingleThreaded,
+            FixSocketServerKind::MultiThreaded,
         )?),
         "acceptor" => server_loop(Acceptor::try_new(
             &settings,
             &app,
             &store_factory,
             &log_factory,
-            FixSocketServerKind::SingleThreaded,
+            FixSocketServerKind::MultiThreaded,
         )?),
         _ => {
             eprintln!("Invalid connection mode");

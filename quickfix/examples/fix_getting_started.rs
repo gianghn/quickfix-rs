@@ -36,7 +36,7 @@ fn main() -> Result<(), QuickFixError> {
         &app,
         &store_factory,
         &log_factory,
-        FixSocketServerKind::SingleThreaded,
+        FixSocketServerKind::MultiThreaded,
     )?;
 
     println!(">> connection handler START");
