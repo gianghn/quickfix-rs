@@ -12,6 +12,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 
 # 1. No submodule: a copy of the repo without libquickfix's files, offline.
+# Crates are fetched first: offline must fail on the submodule, not on an empty cargo cache (fresh CI).
+(cd "$root" && cargo fetch --locked)
 copy=$(mktemp -d)
 trap 'rm -rf "$copy"' EXIT
 tar -C "$root" --exclude=./target --exclude='./quickfix-ffi/libquickfix/*' --exclude='*/build' \
