@@ -17,6 +17,8 @@
 - Asking for an SSL acceptor or initiator in a build without SSL returns an error instead of
   terminating the process; every binding call also catches non-`std::exception` throws (R-P2-1).
 - The binding's last-error message no longer leaks once per thread (R-P1-2).
+- `clone_group` (message, header, trailer, group) and every generated group getter no longer read
+  past the heap; the copied group reports its own field id and delimiter (R-P0-7).
 
 ## v0.2.2
 

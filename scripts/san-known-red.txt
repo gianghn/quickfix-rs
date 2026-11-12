@@ -2,8 +2,3 @@
 # scripts/san.sh skips them; the phase that fixes the item deletes its lines (KRX_BUILD_PLAN.md, D4).
 # Names are matched exactly across every test binary, so each name here must be unique.
 # Format: <address|thread> <exact test name> <item id>
-address test_build_custom_with_recursive_groups R-P0-7
-address test_read_group_clone R-P0-7
-address test_build_list_status R-P0-7
-address test_group_iterator R-P0-7
-address iter_no_party_i_ds_reads_parties_and_nested_sub_ids R-P0-7
