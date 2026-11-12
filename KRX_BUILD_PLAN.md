@@ -81,7 +81,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | Phase | Branch | Status | Red → green |
 |---|---|---|---|
 | 1 | `krx/golive-p1` | done locally, not pushed | ASan: 6 overflow tests + 11 leaking tests → leaks fixed, 6 on known-red (R-P0-7); TSan unverified until CI |
-| 2 | `krx/golive-p2` | not started | |
+| 2 | `krx/golive-p2` | done locally, not pushed | 8 tests: 6 green, 1 red under ASan (R-P0-7), 1 red `#[ignore]` (R-P0-9) |
 | 3 | `krx/golive-p3` | not started | |
 | 4 | `krx/golive-p4` | not started | |
 | 5 | `krx/golive-p5` | not started | |
@@ -119,3 +119,21 @@ in phase 9).
 (`src/C++/config.h` modified, absolute symlinks into `libquickfix/build/cpp-policy`); builds in a
 clean checkout ignore it, but `git -C quickfix-ffi/libquickfix checkout -- . && clean -fdx` would
 reset it. Push and PR wait for the owner.
+
+### Handover 2 — 2026-11-12
+**Built:** `quickfix-msgkrx/tests/test_krx_messages.rs`, the crate's first tests. Messages are framed
+by a `wire()` helper (correct 9= and 10=) with the KRX header (128/129 required) and parsed through
+`DataDictionary::try_from_path(FIX44KRX.xml)`: NewOrderSingle (35=D) and a Quote (35=S) with two
+parties, the second with two nested sub-IDs.
+**Red → green:** 8 tests. Green: dictionary loads; every field survives `to_fix_string` (QuickFIX
+reorders by tag, so the first byte-for-byte version of that test was wrong and was rewritten);
+raw header/body `get_field`; generated NewOrderSingle getters; raw `with_group` parties; 43 absent →
+`None`. Red under ASan: `iter_no_party_i_ds_reads_parties_and_nested_sub_ids`, heap-buffer-overflow
+in `FixGroup_copyGroup` on the nested group (R-P0-7, known-red). Red in plain tests:
+`get_poss_dup_flag_returns_true_when_43_is_y` returns `None` for `43=Y` (R-P0-9, `#[ignore]`).
+**Checks:** native `cargo test -p quickfix-msgkrx`: 7 passed, 1 ignored; `--ignored` fails as
+expected; `scripts/san.sh address` (whole workspace): exit 0; `cargo fmt --check` ok.
+**Not covered yet:** ExecutionReport (35=8) with `150=C`, `58`, and missing required tags: today's
+getters panic and the dictionary rejects them (R-P0-11). Those tests are written in phase 8
+against the `try_get_*` API, and R-P0-11's part waits for the member spec.
+**Decisions taken:** none new.
