@@ -2,8 +2,8 @@ use std::{ffi::CString, fmt, mem::ManuallyDrop};
 
 use quickfix_ffi::{
     FixMessage_addGroup, FixMessage_copy, FixMessage_copyGroup, FixMessage_copyHeader,
-    FixMessage_copyTrailer, FixMessage_delete, FixMessage_fromString, FixMessage_getField,
-    FixMessage_getFieldBytes, FixMessage_getGroupRef, FixMessage_getHeaderRef,
+    FixMessage_copyTrailer, FixMessage_delete, FixMessage_fromBytes, FixMessage_fromString,
+    FixMessage_getField, FixMessage_getFieldBytes, FixMessage_getGroupRef, FixMessage_getHeaderRef,
     FixMessage_getStringLen, FixMessage_getTrailerRef, FixMessage_new, FixMessage_readString,
     FixMessage_removeField, FixMessage_setField, FixMessage_t,
 };
@@ -30,6 +30,19 @@ impl Message {
     pub fn try_from_text(text: &str) -> Result<Self, QuickFixError> {
         let ffi_text = CString::new(text)?;
         unsafe { FixMessage_fromString(ffi_text.as_ptr()) }
+            .map(Self)
+            .ok_or_else(QuickFixError::from_last_error)
+    }
+
+    /// Try create new struct from raw FIX bytes, as they came off the wire: unlike
+    /// [`Self::try_from_text`], non-UTF-8 text and NULs in data fields (`96=a\0b`) pass through.
+    ///
+    /// # Errors
+    ///
+    /// `QuickFIX` cannot parse `data`.
+    pub fn try_from_bytes(data: &[u8]) -> Result<Self, QuickFixError> {
+        // SAFETY: `data` is valid for `data.len()` bytes; C++ copies them before returning.
+        unsafe { FixMessage_fromBytes(data.as_ptr().cast(), data.len()) }
             .map(Self)
             .ok_or_else(QuickFixError::from_last_error)
     }

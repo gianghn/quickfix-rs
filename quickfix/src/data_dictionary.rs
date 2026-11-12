@@ -2,7 +2,7 @@ use std::{ffi::CString, fmt, path::Path};
 
 use quickfix_ffi::{
     FixDataDictionary_delete, FixDataDictionary_fromPath, FixDataDictionary_new,
-    FixDataDictionary_t, FixMessage_fromStringAndDictionary,
+    FixDataDictionary_t, FixMessage_fromBytesAndDictionary, FixMessage_fromStringAndDictionary,
 };
 
 use crate::{Message, QuickFixError};
@@ -33,6 +33,19 @@ impl DataDictionary {
     pub fn try_build_message(&self, text: &str) -> Result<Message, QuickFixError> {
         let ffi_text = CString::new(text)?;
         unsafe { FixMessage_fromStringAndDictionary(ffi_text.as_ptr(), self.0) }
+            .map(Message)
+            .ok_or_else(QuickFixError::from_last_error)
+    }
+
+    /// Create a new FIX message from raw FIX bytes using current dictionary: unlike
+    /// [`Self::try_build_message`], non-UTF-8 text and NULs in data fields pass through.
+    ///
+    /// # Errors
+    ///
+    /// `QuickFIX` cannot parse `data` or it does not validate against the dictionary.
+    pub fn try_build_message_bytes(&self, data: &[u8]) -> Result<Message, QuickFixError> {
+        // SAFETY: `data` is valid for `data.len()` bytes; C++ copies them before returning.
+        unsafe { FixMessage_fromBytesAndDictionary(data.as_ptr().cast(), data.len(), self.0) }
             .map(Message)
             .ok_or_else(QuickFixError::from_last_error)
     }

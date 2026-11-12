@@ -111,6 +111,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 12 | `krx/golive-p12` | PR #15, merged | macOS archives differ (Linux already identical), release binary has no debug info to split, policy clippy on go-live lines 90 → identical on both, 1.47 MB binary + 32.7 MB `.debug`, 30 (29 `unsafe_code`, 1 kept `unnecessary_wraps`) |
 | 13 | `krx/golive-p13` | PR #18, merged | Rocky `ar` without `D` → archives differ; with phase 12's flags identical; tests 150/0/13 |
 | 14 | `krx/golive-p14` | PR #19, merged | old fuzzer 0 crashes in 65.4 M inputs (88 edges) → C++ instrumented: over-read in 1.27 M inputs, ~105 s (1 099 edges) |
+| 15 | `krx/golive-p15-api` | PR open | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
 
 ## 6. Handover notes
 
@@ -535,3 +536,18 @@ known crash, `fuzz/known_crashes/` asserts it (delete both when the C++ fix is p
 fuzz --only deny` passes.
 **Left for the owner:** corpus caching between nightly runs and coverage reports; the
 two-dictionary session parse needs new API.
+
+### Handover 15 — 2026-11-12
+Started by an agent, finished by the lead after the agent ran out of context. **Built:**
+`FixMessage_fromBytes(ptr, len)` and `FixMessage_fromBytesAndDictionary` in quickfix-bind;
+`Message::try_from_bytes`, `DataDictionary::try_build_message_bytes`; fuzz targets parse bytes
+(the UTF-8 skip is gone, the `skip-r-p0-13` filter stays). CHANGELOG entry under a new
+"Unreleased" section, not 0.3.0.
+**Red → green:** `test_parse_bytes.rs` (7) and 5 new `test_data_length.rs` tests did not compile
+without the API. After: Latin-1 in 58 and a NUL inside 96 round-trip byte-exact; macOS
+158 passed / 0 failed / 16 ignored, MSRV 1.86 builds; ASan container 158/0/2. The three huge-length
+byte tests (1e5, 1e8, 2e9) are red under ASan as R-P0-13, `#[ignore]` and in
+`scripts/san-known-red.txt`; -50 is refused and runs. Fuzz 4 targets × 60 s via bytes: 0
+crashes (≈ 295–346 k runs each). `rust-policy-check fuzz` passes, lint `--changed` exit 0.
+**Left for the owner:** none new; the R-P0-13 C++ fix must also cover negative lengths and
+90/91.

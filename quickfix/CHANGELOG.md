@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (KRX fork, krx/main)
+
+### Added
+
+- `Message::try_from_bytes(&[u8])` and `DataDictionary::try_build_message_bytes(&[u8])` parse
+  raw FIX bytes, so non-UTF-8 text (`58=caf\xE9`) and NULs in data fields (`96=a\0b`) are no
+  longer refused or cut; the parsed message serializes back byte-exact. C:
+  `FixMessage_fromBytes(data, len)` and `FixMessage_fromBytesAndDictionary` (go-live phase 15).
+
 ## 0.3.0 (KRX fork, krx/main, not published to crates.io)
 
 ### Breaking changes

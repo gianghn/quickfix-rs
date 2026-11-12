@@ -48,17 +48,12 @@ impl Spec {
 
 /// Parses `data` into a message, with `dictionary` when given, and serializes what parsed.
 pub fn parse(dictionary: Option<&DataDictionary>, data: &[u8]) {
-    // shortcut: the binding only takes &str, so input that is not UTF-8 is skipped (not
-    // mangled); a byte entry point (`Message::try_from_bytes`) would let it through.
-    let Ok(text) = std::str::from_utf8(data) else {
-        return;
-    };
     if cfg!(feature = "skip-r-p0-13") && overreads_data_field(data) {
         return;
     }
     let parsed = match dictionary {
-        Some(dictionary) => dictionary.try_build_message(text),
-        None => Message::try_from_text(text),
+        Some(dictionary) => dictionary.try_build_message_bytes(data),
+        None => Message::try_from_bytes(data),
     };
     if let Ok(message) = parsed {
         // Serializing walks every parsed field, groups, header and trailer included.
