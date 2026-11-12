@@ -33,8 +33,19 @@ pub fn build_settings(
         Dictionary::try_from_items(&[&server_type.connection_type(), &ReconnectInterval(60)])?,
     )?;
 
+    add_session(&mut settings, &server_type.session_id(), port)?;
+
+    Ok(settings)
+}
+
+/// Adds one more FIX 4.4 session on `port` to `settings`.
+pub fn add_session(
+    settings: &mut SessionSettings,
+    session_id: &SessionId,
+    port: u16,
+) -> Result<(), QuickFixError> {
     settings.set(
-        Some(&server_type.session_id()),
+        Some(session_id),
         Dictionary::try_from_items(&[
             &StartTime("00:00:00"),
             &EndTime("23:59:59"),
@@ -44,9 +55,7 @@ pub fn build_settings(
             &SocketConnectPort(port),
             &SocketConnectHost("127.0.0.1"),
         ])?,
-    )?;
-
-    Ok(settings)
+    )
 }
 
 pub fn build_ssl_settings(
