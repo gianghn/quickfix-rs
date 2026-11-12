@@ -17,7 +17,8 @@ impl MySqlMessageStoreFactory {
     }
 }
 
-impl FfiMessageStoreFactory for MySqlMessageStoreFactory {
+// SAFETY: the pointer comes from `FixMysqlMessageStoreFactory_new` and is freed only by `drop`.
+unsafe impl FfiMessageStoreFactory for MySqlMessageStoreFactory {
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t {
         self.0
     }

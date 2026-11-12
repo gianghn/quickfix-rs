@@ -35,6 +35,23 @@ macro_rules! impl_dictionary_item {
         }
     };
 
+    // QuickFIX reads these as a C int: a value it cannot hold is an error, not wrapped.
+    ($item:ty as checked i32) => {
+        impl DictionaryItem for $item {
+            fn apply_param(&self, dict: &mut Dictionary) -> Result<(), QuickFixError> {
+                let value = i32::try_from(self.0).map_err(|_| {
+                    QuickFixError::invalid_argument(format!(
+                        "{} {} is above {}",
+                        stringify!($item),
+                        self.0,
+                        i32::MAX
+                    ))
+                })?;
+                dict.set(stringify!($item), value)
+            }
+        }
+    };
+
     ($item:ty as $target_type:ty) => {
         impl DictionaryItem for $item {
             fn apply_param(&self, dict: &mut Dictionary) -> Result<(), QuickFixError> {
@@ -93,13 +110,13 @@ impl_dictionary_item!(SocketReuseAddress);
 pub struct SocketNodelay(pub bool);
 impl_dictionary_item!(SocketNodelay);
 
-/// Configure SO_SNDBUF socket parameter.
-pub struct SocketSendBufferSize(pub u16);
-impl_dictionary_item!(SocketSendBufferSize as i32);
+/// Configure SO_SNDBUF socket parameter, in bytes (at most `i32::MAX`).
+pub struct SocketSendBufferSize(pub u32);
+impl_dictionary_item!(SocketSendBufferSize as checked i32);
 
-/// Configure SO_RCVBUF socket parameter.
-pub struct SocketReceiveBufferSize(pub u16);
-impl_dictionary_item!(SocketReceiveBufferSize as i32);
+/// Configure SO_RCVBUF socket parameter, in bytes (at most `i32::MAX`).
+pub struct SocketReceiveBufferSize(pub u32);
+impl_dictionary_item!(SocketReceiveBufferSize as checked i32);
 
 /// Time in second to wait before reconnect.
 pub struct ReconnectInterval(pub u16);
@@ -260,6 +277,32 @@ impl_dictionary_item!(ClientCertificateFile as String);
 /// Path where SSL certificate key file can be found.
 pub struct ClientCertificateKeyFile<'a>(pub &'a str);
 impl_dictionary_item!(ClientCertificateKeyFile as String);
+
+/// Digits of sub-second precision in SendingTime (52) and the other UTC timestamps QuickFIX
+/// writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimestampPrecision {
+    /// `20261112-09:00:00`
+    Seconds,
+    /// `20261112-09:00:00.123`
+    Milliseconds,
+    /// `20261112-09:00:00.123456`
+    Microseconds,
+    /// `20261112-09:00:00.123456789`
+    Nanoseconds,
+}
+
+impl DictionaryItem for TimestampPrecision {
+    fn apply_param(&self, dict: &mut Dictionary) -> Result<(), QuickFixError> {
+        let digits: i32 = match self {
+            Self::Seconds => 0,
+            Self::Milliseconds => 3,
+            Self::Microseconds => 6,
+            Self::Nanoseconds => 9,
+        };
+        dict.set("TimestampPrecision", digits)
+    }
+}
 
 /// Enabled and active SSL protocol.
 pub enum SSLProtocol {

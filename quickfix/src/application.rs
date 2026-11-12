@@ -1,8 +1,8 @@
 use std::{ffi, marker::PhantomData, mem::ManuallyDrop};
 
 use quickfix_ffi::{
-    FixApplicationCallbacks_t, FixApplication_delete, FixApplication_new, FixApplication_t,
-    FixMessage_t, FixSessionID_t,
+    FixApplicationCallbacks_t, FixApplication_delete, FixApplication_new,
+    FixApplication_setRejectDetail, FixApplication_t, FixMessage_t, FixSessionID_t,
 };
 
 use crate::{utils::abort_on_panic, Borrowed, Message, MessageMut, QuickFixError, SessionId};
@@ -15,40 +15,84 @@ pub enum MsgToAppError {
 }
 
 /// Error result that can occurs from a `on_msg_from_admin` callback.
+///
+/// The counterparty sees `tag` as RefTagID (371) on the Reject, and `text` as the Text (58) of
+/// the Logout that refuses the logon (R-P2-2).
 #[derive(Debug)]
 pub enum MsgFromAdminError {
     /// Field not found inside a message.
-    FieldNotFound,
+    FieldNotFound {
+        /// The missing tag.
+        tag: i32,
+    },
     /// Field has a badly formatted value.
-    IncorrectDataFormat,
+    IncorrectDataFormat {
+        /// The badly formatted tag.
+        tag: i32,
+    },
     /// Field has a value that is out of range.
-    IncorrectTagValue,
+    IncorrectTagValue {
+        /// The tag with the out-of-range value.
+        tag: i32,
+    },
     /// User wants to reject permission to logon.
-    RejectLogon,
+    RejectLogon {
+        /// Why: the Logout's Text is `Rejected Logon Attempt: <text>`. Text after a NUL byte is
+        /// dropped.
+        text: String,
+    },
 }
 
 /// Error result that can occurs from a `on_msg_from_app` callback.
+///
+/// A session Reject (35=3) carries `tag` as RefTagID (371); a BusinessMessageReject (35=j, sent
+/// for `FieldNotFound` from FIX 4.2) names it in its Text (R-P2-2).
 #[derive(Debug)]
 pub enum MsgFromAppError {
     /// Field not found inside a message.
-    FieldNotFound,
+    FieldNotFound {
+        /// The missing tag.
+        tag: i32,
+    },
     /// Field has a badly formatted value.
-    IncorrectDataFormat,
+    IncorrectDataFormat {
+        /// The badly formatted tag.
+        tag: i32,
+    },
     /// Field has a value that is out of range.
-    IncorrectTagValue,
+    IncorrectTagValue {
+        /// The tag with the out-of-range value.
+        tag: i32,
+    },
     /// Message type not supported by application.
     UnsupportedMessageType,
 }
 
 trait AsFixCallbackCode {
     fn as_callback_code(&self) -> i8;
+
+    /// The tag and text QuickFIX puts on the reject it sends for this error.
+    fn reject_detail(&self) -> (i32, &str) {
+        (0, "")
+    }
 }
 
 fn callback_to_code<T: AsFixCallbackCode>(input: Result<(), T>) -> i8 {
     match input {
         Ok(()) => quickfix_ffi::CALLBACK_OK,
-        Err(x) => x.as_callback_code(), // Deliberately change the control flow.
+        Err(x) => {
+            set_reject_detail(x.reject_detail());
+            x.as_callback_code() // Deliberately change the control flow.
+        }
     }
+}
+
+/// Hands the reject detail to the binding, on the callback's thread, before the code returns.
+fn set_reject_detail((tag, text): (i32, &str)) {
+    // A C string ends at a NUL: keep the text before it rather than lose all of it.
+    let before_nul = text.split('\0').next().unwrap_or_default();
+    let text = ffi::CString::new(before_nul).unwrap_or_default();
+    unsafe { FixApplication_setRejectDetail(tag, text.as_ptr()) }
 }
 
 impl AsFixCallbackCode for MsgToAppError {
@@ -60,10 +104,19 @@ impl AsFixCallbackCode for MsgToAppError {
 impl AsFixCallbackCode for MsgFromAdminError {
     fn as_callback_code(&self) -> i8 {
         match self {
-            Self::FieldNotFound => quickfix_ffi::CALLBACK_RESULT_FIELD_NOT_FOUND,
-            Self::IncorrectDataFormat => quickfix_ffi::CALLBACK_RESULT_INCORRECT_DATA_FORMAT,
-            Self::IncorrectTagValue => quickfix_ffi::CALLBACK_RESULT_INCORRECT_TAG_VALUE,
-            Self::RejectLogon => quickfix_ffi::CALLBACK_RESULT_REJECT_LOGON,
+            Self::FieldNotFound { .. } => quickfix_ffi::CALLBACK_RESULT_FIELD_NOT_FOUND,
+            Self::IncorrectDataFormat { .. } => quickfix_ffi::CALLBACK_RESULT_INCORRECT_DATA_FORMAT,
+            Self::IncorrectTagValue { .. } => quickfix_ffi::CALLBACK_RESULT_INCORRECT_TAG_VALUE,
+            Self::RejectLogon { .. } => quickfix_ffi::CALLBACK_RESULT_REJECT_LOGON,
+        }
+    }
+
+    fn reject_detail(&self) -> (i32, &str) {
+        match self {
+            Self::FieldNotFound { tag }
+            | Self::IncorrectDataFormat { tag }
+            | Self::IncorrectTagValue { tag } => (*tag, ""),
+            Self::RejectLogon { text } => (0, text),
         }
     }
 }
@@ -71,10 +124,19 @@ impl AsFixCallbackCode for MsgFromAdminError {
 impl AsFixCallbackCode for MsgFromAppError {
     fn as_callback_code(&self) -> i8 {
         match self {
-            Self::FieldNotFound => quickfix_ffi::CALLBACK_RESULT_FIELD_NOT_FOUND,
-            Self::IncorrectDataFormat => quickfix_ffi::CALLBACK_RESULT_INCORRECT_DATA_FORMAT,
-            Self::IncorrectTagValue => quickfix_ffi::CALLBACK_RESULT_INCORRECT_TAG_VALUE,
+            Self::FieldNotFound { .. } => quickfix_ffi::CALLBACK_RESULT_FIELD_NOT_FOUND,
+            Self::IncorrectDataFormat { .. } => quickfix_ffi::CALLBACK_RESULT_INCORRECT_DATA_FORMAT,
+            Self::IncorrectTagValue { .. } => quickfix_ffi::CALLBACK_RESULT_INCORRECT_TAG_VALUE,
             Self::UnsupportedMessageType => quickfix_ffi::CALLBACK_RESULT_UNSUPPORTED_MESSAGE_TYPE,
+        }
+    }
+
+    fn reject_detail(&self) -> (i32, &str) {
+        match self {
+            Self::FieldNotFound { tag }
+            | Self::IncorrectDataFormat { tag }
+            | Self::IncorrectTagValue { tag } => (*tag, ""),
+            Self::UnsupportedMessageType => (0, ""),
         }
     }
 }

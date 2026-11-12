@@ -17,7 +17,9 @@ impl PostgresMessageStoreFactory {
     }
 }
 
-impl FfiMessageStoreFactory for PostgresMessageStoreFactory {
+// SAFETY: the pointer comes from `FixPostgresMessageStoreFactory_new` and is freed only by
+// `drop`.
+unsafe impl FfiMessageStoreFactory for PostgresMessageStoreFactory {
     fn as_ffi_ptr(&self) -> FixMessageStoreFactory_t {
         self.0
     }

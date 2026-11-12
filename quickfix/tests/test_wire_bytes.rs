@@ -7,53 +7,24 @@
 //! A raw TCP peer logs on to an acceptor and sends a News with `58=caf\xE9` and `96=a\0b`.
 
 use std::{
-    io::{Read, Write},
-    net::TcpStream,
+    io::Write,
     sync::{Mutex, MutexGuard, PoisonError},
     thread,
     time::Duration,
 };
 
 use quickfix::{dictionary_item::CheckLatency, *};
-use utils::*;
+use utils::{
+    raw_peer::{contains, header, wire},
+    *,
+};
 
 mod utils;
-
-const SOH: u8 = 1;
 
 fn serial() -> MutexGuard<'static, u8> {
     checker::GLOBAL_LOCK
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-}
-
-/// Frames `fields` as FIX 4.4 wire bytes with a correct BodyLength and CheckSum.
-fn wire(fields: &[(i32, &[u8])]) -> Vec<u8> {
-    let mut body = Vec::new();
-    for (tag, value) in fields {
-        body.extend_from_slice(format!("{tag}=").as_bytes());
-        body.extend_from_slice(value);
-        body.push(SOH);
-    }
-    let mut out = format!("8=FIX.4.4\x019={}\x01", body.len()).into_bytes();
-    out.extend_from_slice(&body);
-    let sum = out.iter().map(|b| u32::from(*b)).sum::<u32>() % 256;
-    out.extend_from_slice(format!("10={sum:03}\x01").as_bytes());
-    out
-}
-
-fn header(msg_type: &'static [u8], seq: &'static [u8]) -> Vec<(i32, &'static [u8])> {
-    vec![
-        (35, msg_type),
-        (49, b"SENDER"),
-        (56, b"RECEIVER"),
-        (34, seq),
-        (52, b"20261111-02:15:00.000"),
-    ]
-}
-
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 #[derive(Debug, Default)]
@@ -83,15 +54,7 @@ impl ApplicationCallback for Received {
 
 /// Logs on as SENDER, sends the News, and returns once the acceptor handled it (or gave up).
 fn send_news(port: u16, received: &Received) {
-    let mut peer = TcpStream::connect(("127.0.0.1", port)).expect("acceptor listens");
-    peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-
-    let mut logon = header(b"A", b"1");
-    logon.extend([(98, &b"0"[..]), (108, b"30")]);
-    peer.write_all(&wire(&logon)).unwrap();
-    let mut reply = [0u8; 512];
-    let n = peer.read(&mut reply).expect("logon answered");
-    assert!(contains(&reply[..n], b"35=A\x01"), "no logon reply");
+    let mut peer = raw_peer::logon(port);
 
     let mut news = header(b"B", b"2");
     news.extend([

@@ -212,6 +212,22 @@ const char *Fix_getLastErrorMessage() { return hasLastError ? lastError.c_str() 
 
 int8_t Fix_getLastErrorCode() { return lastErrorCode; }
 
+// What a fromAdmin/fromApp callback named with its reject code: the tag for RefTagID and the text
+// for a logon reject. Set by the callback on this thread, read when the code is turned into the
+// QuickFIX exception (R-P2-2).
+static thread_local int32_t rejectTag = 0;
+static thread_local std::string rejectText;
+
+void FixApplication_setRejectDetail(int32_t tag, const char *text) {
+  rejectTag = tag;
+  rejectText = text ? text : "";
+}
+
+static void Fix_clearRejectDetail() {
+  rejectTag = 0;
+  rejectText.clear();
+}
+
 void Fix_clearLastErrorMessage() {
   lastError.clear();
   hasLastError = false;
@@ -280,19 +296,20 @@ public:
       EXCEPT(FieldNotFound, IncorrectDataFormat, IncorrectTagValue, RejectLogon) override {
     RETURN_IF_NULL(callbacks);
     RETURN_IF_NULL(callbacks->fromAdmin);
+    Fix_clearRejectDetail();
     int8_t result = callbacks->fromAdmin(data, &msg, &session);
 
     switch (result) {
     case CALLBACK_OK:
       return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
-      throw FieldNotFound();
+      throw FieldNotFound(rejectTag);
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
-      throw IncorrectDataFormat();
+      throw IncorrectDataFormat(rejectTag);
     case CALLBACK_RESULT_INCORRECT_TAG_VALUE:
-      throw IncorrectTagValue();
+      throw IncorrectTagValue(rejectTag);
     case CALLBACK_RESULT_REJECT_LOGON:
-      throw RejectLogon();
+      throw RejectLogon(rejectText);
     default:
       failOnUnknownCallbackResult();
     }
@@ -302,17 +319,18 @@ public:
       EXCEPT(FieldNotFound, IncorrectDataFormat, IncorrectTagValue, UnsupportedMessageType) override {
     RETURN_IF_NULL(callbacks);
     RETURN_IF_NULL(callbacks->fromApp);
+    Fix_clearRejectDetail();
     int8_t result = callbacks->fromApp(data, &msg, &session);
 
     switch (result) {
     case CALLBACK_OK:
       return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
-      throw FieldNotFound();
+      throw FieldNotFound(rejectTag);
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
-      throw IncorrectDataFormat();
+      throw IncorrectDataFormat(rejectTag);
     case CALLBACK_RESULT_INCORRECT_TAG_VALUE:
-      throw IncorrectTagValue();
+      throw IncorrectTagValue(rejectTag);
     case CALLBACK_RESULT_UNSUPPORTED_MESSAGE_TYPE:
       throw UnsupportedMessageType();
     default:
@@ -515,18 +533,27 @@ int8_t FixDictionary_readString(const Dictionary *obj, const char *key, char *bu
   })
 }
 
-int32_t FixDictionary_getInt(const Dictionary *obj, const char *key) {
-  RETURN_VAL_IF_NULL(obj, 0);
-  RETURN_VAL_IF_NULL(key, 0);
+// The value goes through `out` so that 0 is a value, not also the error (R-P2-2).
+int8_t FixDictionary_getInt(const Dictionary *obj, const char *key, int32_t *out) {
+  RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(key, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(out, ERRNO_INVAL);
 
-  CATCH_OR_RETURN(0, { return obj->getInt(key); })
+  CATCH_OR_RETURN_ERRNO({
+    *out = obj->getInt(key);
+    return 0;
+  })
 }
 
-double FixDictionary_getDouble(const Dictionary *obj, const char *key) {
-  RETURN_VAL_IF_NULL(obj, 0.0);
-  RETURN_VAL_IF_NULL(key, 0.0);
+int8_t FixDictionary_getDouble(const Dictionary *obj, const char *key, double *out) {
+  RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(key, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(out, ERRNO_INVAL);
 
-  CATCH_OR_RETURN(0.0, { return obj->getDouble(key); })
+  CATCH_OR_RETURN_ERRNO({
+    *out = obj->getDouble(key);
+    return 0;
+  })
 }
 
 int8_t FixDictionary_getBool(const Dictionary *obj, const char *key) {
@@ -659,10 +686,10 @@ int8_t FixAcceptor_poll(Acceptor *obj) {
   CATCH_OR_RETURN_ERRNO({ return obj->poll(); });
 }
 
-int8_t FixAcceptor_stop(Acceptor *obj) {
+int8_t FixAcceptor_stop(Acceptor *obj, int8_t force) {
   RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
   CATCH_OR_RETURN_ERRNO({
-    obj->stop();
+    obj->stop(force != 0);
     return 0;
   });
 }
@@ -730,10 +757,10 @@ int8_t FixInitiator_poll(Initiator *obj) {
   CATCH_OR_RETURN_ERRNO({ return obj->poll(); });
 }
 
-int8_t FixInitiator_stop(Initiator *obj) {
+int8_t FixInitiator_stop(Initiator *obj, int8_t force) {
   RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
   CATCH_OR_RETURN_ERRNO({
-    obj->stop();
+    obj->stop(force != 0);
     return 0;
   });
 }
@@ -1132,7 +1159,21 @@ int8_t FixSession_isLoggedOn(FixSession_t *session) {
 
 int8_t FixSession_send(FixSession_t *session, FixMessage_t *msg) {
   RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(msg, ERRNO_INVAL);
   CATCH_OR_RETURN_ERRNO({ return session->send(*msg); });
+}
+
+int8_t FixSession_isEnabled(FixSession_t *session) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({ return session->isEnabled(); });
+}
+
+int8_t FixSession_refresh(FixSession_t *session) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({
+    session->refresh();
+    return 0;
+  });
 }
 
 int8_t FixSession_reset(FixSession_t *session) {

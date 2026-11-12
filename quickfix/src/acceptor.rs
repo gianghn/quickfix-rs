@@ -82,7 +82,11 @@ where
     }
 
     fn stop(&mut self) -> Result<(), QuickFixError> {
-        ffi_code_to_result(unsafe { FixAcceptor_stop(self.inner) })
+        ffi_code_to_result(unsafe { FixAcceptor_stop(self.inner, 0) })
+    }
+
+    fn stop_force(&mut self) -> Result<(), QuickFixError> {
+        ffi_code_to_result(unsafe { FixAcceptor_stop(self.inner, 1) })
     }
 
     fn is_logged_on(&self) -> Result<bool, QuickFixError> {
@@ -121,7 +125,7 @@ where
     L: LogCallback,
 {
     fn drop(&mut self) {
-        let _ = self.stop();
+        let _ = self.stop_force();
         while_deleting(|| unsafe { FixAcceptor_delete(self.inner) })
     }
 }

@@ -6,14 +6,15 @@ use std::{
 };
 
 use quickfix_ffi::{
-    FixSession_isLoggedOn, FixSession_logon, FixSession_logout, FixSession_lookup,
-    FixSession_reset, FixSession_send, FixSession_sendToTarget, FixSession_setNextSenderMsgSeqNum,
-    FixSession_setNextTargetMsgSeqNum, FixSession_t,
+    FixSession_isEnabled, FixSession_isLoggedOn, FixSession_logon, FixSession_logout,
+    FixSession_lookup, FixSession_refresh, FixSession_reset, FixSession_send,
+    FixSession_sendToTarget, FixSession_setNextSenderMsgSeqNum, FixSession_setNextTargetMsgSeqNum,
+    FixSession_t,
 };
 
 use crate::{
     utils::{ffi_code_to_bool, ffi_code_to_result},
-    Message, QuickFixError, SessionId,
+    FieldMap, Message, QuickFixError, SessionId,
 };
 
 /// Sends hold this gate shared; deleting an acceptor or initiator, which frees its C++ sessions,
@@ -127,6 +128,27 @@ impl Session<'_> {
     /// Enable session so that logon is sent.
     pub fn logon(&mut self) -> Result<(), QuickFixError> {
         ffi_code_to_result(unsafe { FixSession_logon(self.inner) })
+    }
+
+    /// Check if the session is enabled: `logon` enables it, `logout` disables it, and a disabled
+    /// session does not log on again by itself.
+    pub fn is_enabled(&mut self) -> Result<bool, QuickFixError> {
+        ffi_code_to_bool(unsafe { FixSession_isEnabled(self.inner) })
+    }
+
+    /// Reload the sequence numbers and messages from the message store, for a store that another
+    /// process changed.
+    pub fn refresh(&mut self) -> Result<(), QuickFixError> {
+        ffi_code_to_result(unsafe { FixSession_refresh(self.inner) })
+    }
+
+    /// Send a TestRequest (35=1) with `test_req_id` (112). The counterparty answers with a
+    /// Heartbeat carrying the same TestReqID, which proves the link works end to end.
+    pub fn send_test_request(&mut self, test_req_id: &str) -> Result<bool, QuickFixError> {
+        let mut msg = Message::new();
+        msg.with_header_mut(|header| header.set_field(35, "1"))?;
+        msg.set_field(112, test_req_id)?;
+        self.send(msg)
     }
     /// Set next sender message sequence number.
     ///
