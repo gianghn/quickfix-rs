@@ -79,7 +79,7 @@ fn test_build_order_status_request() -> Result<(), QuickFixError> {
         Some("H")
     );
 
-    let _obj: OrderStatusRequest = msg.into();
+    let _obj = OrderStatusRequest::try_from(msg).expect("an OrderStatusRequest");
 
     Ok(())
 }

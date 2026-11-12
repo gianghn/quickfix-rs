@@ -90,6 +90,17 @@ fn test_set_field() -> Result<(), QuickFixError> {
     Ok(())
 }
 
+/// R-P0-10: `44=NaN` and `44=inf` used to reach the wire.
+#[test]
+fn set_field_returns_error_when_float_is_not_finite() {
+    let mut msg = Message::new();
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(msg.set_field(44, bad).is_err(), "{bad} accepted");
+    }
+    assert!(msg.set_field(44, f32::NAN).is_err());
+    assert_eq!(msg.get_field(44), None);
+}
+
 #[test]
 fn test_set_field_twice() {
     let mut msg = Message::new();

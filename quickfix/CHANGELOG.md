@@ -21,6 +21,11 @@
   through `Deref` and write through `FieldMap`, and cannot be swapped out (which freed the C++
   object under its owner). `GroupMut::field_id()` is the tag it was looked up by; it has no
   `delim()`.
+- `IntoFixValue::into_fix_value` returns `QuickFixError` (was `NulError`); `f32`/`f64` NaN and
+  infinities are rejected instead of written as `44=NaN` (R-P0-10).
+- Generated message crates: `TryFrom<quickfix::Message>` (error `FieldError`) replaces the
+  `From` that asserted the MsgType; every field has a `try_get_*` returning `FieldError::Missing`
+  or `FieldError::Invalid` instead of panicking; FIX booleans (`Y`/`N`) now parse (R-P0-9).
 
 ### Fixes
 
