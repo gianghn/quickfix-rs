@@ -174,6 +174,10 @@ pub trait ConnectionHandler {
 
     /// Stop handler: send Logout on every session and disconnect without waiting for the
     /// answers. `Drop` uses this, so dropping never blocks on a silent counterparty (R-P2-2).
+    ///
+    /// # Errors
+    ///
+    /// The binding's error when `QuickFIX` fails to stop.
     fn stop_force(&mut self) -> Result<(), QuickFixError>;
 
     /// Check if handler has sent logging message or not.

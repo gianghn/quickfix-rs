@@ -82,10 +82,12 @@ where
     }
 
     fn stop(&mut self) -> Result<(), QuickFixError> {
+        // SAFETY: `self.inner` came from `FixAcceptor_new` and stays valid until `drop` deletes it.
         ffi_code_to_result(unsafe { FixAcceptor_stop(self.inner, 0) })
     }
 
     fn stop_force(&mut self) -> Result<(), QuickFixError> {
+        // SAFETY: `self.inner` came from `FixAcceptor_new` and stays valid until `drop` deletes it.
         ffi_code_to_result(unsafe { FixAcceptor_stop(self.inner, 1) })
     }
 
@@ -125,7 +127,10 @@ where
     L: LogCallback,
 {
     fn drop(&mut self) {
-        let _ = self.stop_force();
-        while_deleting(|| unsafe { FixAcceptor_delete(self.inner) })
+        // Drop cannot report a failed stop; the handler is deleted either way.
+        self.stop_force().ok();
+        // SAFETY: `self.inner` came from `FixAcceptor_new`, is deleted only here, and is never used
+        // again; `while_deleting` keeps sends out while it goes.
+        while_deleting(|| unsafe { FixAcceptor_delete(self.inner) });
     }
 }

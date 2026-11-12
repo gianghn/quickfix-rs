@@ -16,7 +16,7 @@ pub enum MsgToAppError {
 
 /// Error result that can occurs from a `on_msg_from_admin` callback.
 ///
-/// The counterparty sees `tag` as RefTagID (371) on the Reject, and `text` as the Text (58) of
+/// The counterparty sees `tag` as `RefTagID` (371) on the Reject, and `text` as the Text (58) of
 /// the Logout that refuses the logon (R-P2-2).
 #[derive(Debug)]
 pub enum MsgFromAdminError {
@@ -45,7 +45,7 @@ pub enum MsgFromAdminError {
 
 /// Error result that can occurs from a `on_msg_from_app` callback.
 ///
-/// A session Reject (35=3) carries `tag` as RefTagID (371); a BusinessMessageReject (35=j, sent
+/// A session Reject (35=3) carries `tag` as `RefTagID` (371); a `BusinessMessageReject` (35=j, sent
 /// for `FieldNotFound` from FIX 4.2) names it in its Text (R-P2-2).
 #[derive(Debug)]
 pub enum MsgFromAppError {
@@ -71,7 +71,7 @@ pub enum MsgFromAppError {
 trait AsFixCallbackCode {
     fn as_callback_code(&self) -> i8;
 
-    /// The tag and text QuickFIX puts on the reject it sends for this error.
+    /// The tag and text `QuickFIX` puts on the reject it sends for this error.
     fn reject_detail(&self) -> (i32, &str) {
         (0, "")
     }
@@ -92,6 +92,8 @@ fn set_reject_detail((tag, text): (i32, &str)) {
     // A C string ends at a NUL: keep the text before it rather than lose all of it.
     let before_nul = text.split('\0').next().unwrap_or_default();
     let text = ffi::CString::new(before_nul).unwrap_or_default();
+    // SAFETY: `text` is a NUL-terminated C string that outlives the call; the binding copies it
+    // into its thread-local reject detail before returning.
     unsafe { FixApplication_setRejectDetail(tag, text.as_ptr()) }
 }
 
@@ -152,8 +154,8 @@ impl AsFixCallbackCode for MsgFromAppError {
 /// impl quickfix::ApplicationCallback for Counter {}
 /// ```
 ///
-/// The message given to `on_msg_to_admin` and `on_msg_to_app` belongs to QuickFIX: it can be
-/// edited but not moved out, which would free it under QuickFIX (R-P0-3):
+/// The message given to `on_msg_to_admin` and `on_msg_to_app` belongs to `QuickFIX`: it can be
+/// edited but not moved out, which would free it under `QuickFIX` (R-P0-3):
 ///
 /// ```compile_fail
 /// use quickfix::*;
@@ -186,6 +188,10 @@ pub trait ApplicationCallback: Send + Sync {
     /// Called before sending message to application level.
     ///
     /// Message can be updated at this stage.
+    ///
+    /// # Errors
+    ///
+    /// [`MsgToAppError::DoNotSend`] stops `QuickFIX` from sending the message.
     fn on_msg_to_app(
         &self,
         _msg: &mut MessageMut<'_>,
@@ -195,6 +201,10 @@ pub trait ApplicationCallback: Send + Sync {
     }
 
     /// Called after received a message from admin level.
+    ///
+    /// # Errors
+    ///
+    /// A [`MsgFromAdminError`] makes `QuickFIX` reject the message, or refuse the logon.
     fn on_msg_from_admin(
         &self,
         _msg: &Message,
@@ -204,6 +214,10 @@ pub trait ApplicationCallback: Send + Sync {
     }
 
     /// Called after received a message from application level.
+    ///
+    /// # Errors
+    ///
+    /// A [`MsgFromAppError`] makes `QuickFIX` reject the message.
     fn on_msg_from_app(&self, _msg: &Message, _session: &SessionId) -> Result<(), MsgFromAppError> {
         Ok(())
     }

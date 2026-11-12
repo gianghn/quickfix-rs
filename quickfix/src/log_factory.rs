@@ -13,7 +13,7 @@ use crate::{utils::abort_on_panic, QuickFixError, SessionId};
 
 /// Log event that can occurs in quickfix library.
 ///
-/// Each callback will be called based on session / socket lifecycle, from any QuickFIX thread,
+/// Each callback will be called based on session / socket lifecycle, from any `QuickFIX` thread,
 /// so implementations must be `Send + Sync` (R-P0-4):
 ///
 /// ```compile_fail
@@ -53,13 +53,14 @@ pub trait LogCallback: Send + Sync {
     }
 }
 
-/// The `len` bytes QuickFIX passed; empty for a null pointer.
+/// The `len` bytes `QuickFIX` passed; empty for a null pointer.
 ///
 /// # Safety
 ///
 /// `ptr` must point to `len` readable bytes that live for the call, or be null.
 unsafe fn log_bytes<'a>(ptr: *const ffi::c_char, len: u64) -> &'a [u8] {
     match usize::try_from(len) {
+        // SAFETY: the caller promises `len` readable bytes at the non-null `ptr` for the call.
         Ok(len) if !ptr.is_null() => unsafe { std::slice::from_raw_parts(ptr.cast(), len) },
         _ => &[],
     }
@@ -98,6 +99,7 @@ where
         msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
+        // SAFETY: the binding passes `msg.data()` and `msg.size()` of a string that outlives the call.
         let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {
@@ -113,6 +115,7 @@ where
         msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
+        // SAFETY: the binding passes `msg.data()` and `msg.size()` of a string that outlives the call.
         let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {
@@ -128,6 +131,7 @@ where
         msg_len: u64,
     ) {
         let session_id = session_id_ptr.map(|ptr| ManuallyDrop::new(SessionId(ptr)));
+        // SAFETY: the binding passes `msg.data()` and `msg.size()` of a string that outlives the call.
         let msg = unsafe { log_bytes(msg_ptr, msg_len) };
 
         abort_on_panic(|| {

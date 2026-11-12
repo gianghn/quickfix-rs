@@ -86,7 +86,8 @@ jobs:
       - name: Release build
         run: cargo build --workspace --release --locked
 
-  # The C++ build fetches nothing and is hardened (R-P1-5).
+  # The C++ build fetches nothing, is hardened, gives the same libraries twice, and its release
+  # debug info splits off (R-P1-5).
   build-hardening:
     runs-on: ubuntu-24.04
     steps:
@@ -99,6 +100,10 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Offline without the submodule, and hardening flags
         run: scripts/check-build-hardening.sh
+      - name: Two clean builds give identical static libraries
+        run: scripts/check-reproducible-build.sh
+      - name: Release debug info splits into a .debug file
+        run: scripts/check-split-debuginfo.sh
 
   # Known-vulnerable dependencies. Licenses and bans are checked by `cargo deny` on the gateway's
   # own lockfile, which is what ships (KRX_BUILD_PLAN.md, D7).
