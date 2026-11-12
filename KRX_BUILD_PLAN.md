@@ -75,6 +75,8 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 8 Generator | R-P0-9 `try_get_*`, `TryFrom<Message>`, Y/N bool; R-P0-10 reject NaN/inf | M | phase 2 red tests; `44=NaN` accepted | phase 2 suite fully green; property test on ticks |
 | 9 Binding errors and bytes | R-P1-1 seqnum APIs; R-P1-2 stale last error; R-P1-3 log bytes; R-P1-4 `memcpy` | M | `set(0)` accepted; stale error test; `58=caf\xE9` and `96=a\0b` differ from the wire | each test green; known-red list empty |
 | 10 Build and hygiene | R-P1-5 hermetic hardened build; R-P1-6 rest (release `--locked`, MSRV, deny/audit, SHA-pinned actions); R-P2-2 small fixes; R-P1-7 reset docs; R-P2-7 docs/metadata | L | no-submodule build tries the network; `checksec` lacks flags | CI fails cleanly offline; flags present; each R-P2-2 unit test green |
+| 11 Regression harness | R-P0-13 data-length test (95 = 1e5 / 1e8 / 2e9 / -50, raw TCP and in process, acceptor and initiator); the research harness's panic, re-entry, cross-session and raw-peer modes and its FFI repro programs as tests in this repo | H | 95=1e8 kills the process under ASan (red, `#[ignore]` / known-red until the C++ pin); repros not yet in the repo | every repro a test; R-P0-13 tests listed red with their item; the rest green |
+| 12 Build leftovers and lint | R-P1-5 rest: identical `libquickfix.a` from two clean builds, split debuginfo; the ~60 fixable policy-clippy findings on go-live lines (handover 10b) | L | two clean builds differ / no debuginfo split; findings counted | identical hashes; split debuginfo; those findings 0 |
 
 Order reasoning: sanitizers first, because most P0s are only visible under them; the KRX suite
 next, so every later phase has KRX-shaped messages to test with; then the crashers and silent
@@ -94,6 +96,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 8 | `krx/golive-p8` | PR #10 | `43=Y` → `None`, NaN accepted, `try_get`/`TryFrom` missing → all green, KRX 13/13 |
 | 9 | `krx/golive-p9` | PR #11 | stale error code -15, set(0) accepted, log/`to_fix_bytes` lost bytes after NUL → all green, ASan exit 0 |
 | 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
+| 1–10b | — | merged into `krx/main` (`4dcb99f`), 12 Nov 2026 | TSan report-only: all 170 reports C++-only (D6) |
 | 10b | `krx/golive-p10b` | PR #13; version 0.3.0 (D2) | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
 
 ## 6. Handover notes
