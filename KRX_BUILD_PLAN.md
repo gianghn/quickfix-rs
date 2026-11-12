@@ -83,6 +83,9 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 10 Build and hygiene | R-P1-5 hermetic hardened build; R-P1-6 rest (release `--locked`, MSRV, deny/audit, SHA-pinned actions); R-P2-2 small fixes; R-P1-7 reset docs; R-P2-7 docs/metadata | L | no-submodule build tries the network; `checksec` lacks flags | CI fails cleanly offline; flags present; each R-P2-2 unit test green |
 | 11 Regression harness | R-P0-13 data-length test (95 = 1e5 / 1e8 / 2e9 / -50, raw TCP and in process, acceptor and initiator); the research harness's panic, re-entry, cross-session and raw-peer modes and its FFI repro programs as tests in this repo | H | 95=1e8 kills the process under ASan (red, `#[ignore]` / known-red until the C++ pin); repros not yet in the repo | every repro a test; R-P0-13 tests listed red with their item; the rest green |
 | 12 Build leftovers and lint | R-P1-5 rest: identical `libquickfix.a` from two clean builds, split debuginfo; the ~60 fixable policy-clippy findings on go-live lines (handover 10b) | L | two clean builds differ / no debuginfo split; findings counted | identical hashes; split debuginfo; those findings 0 |
+| 13 Rocky Linux 9 | D12: CI job in a pinned `rockylinux/rockylinux:9` container: tests, hardening and reproducibility checks | L | `ar` not deterministic on Rocky without phase 12's flags | job green |
+| 14 Fuzzing | D13: `fuzz/` crate outside the workspace, C++ instrumented, nightly workflow | M | the old fuzzer never finds the R-P0-13 over-read | the new one finds it; nightly green with the known crash filtered |
+| 15 Byte-level parse API | `Message::try_from_bytes`, `DataDictionary::try_build_message_bytes` over `FixMessage_fromBytes(ptr, len)`; fuzz targets switch to it (handover 14, decision 1) | M | non-UTF-8 and embedded-NUL frames cannot be parsed from Rust | they parse byte-exact; fuzz targets drop the UTF-8 skip |
 
 Order reasoning: sanitizers first, because most P0s are only visible under them; the KRX suite
 next, so every later phase has KRX-shaped messages to test with; then the crashers and silent
@@ -104,8 +107,10 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
 | 1–10b | — | merged into `krx/main` (`4dcb99f`), 12 Nov 2026 | TSan report-only: all 170 reports C++-only (D6) |
 | 10b | `krx/golive-p10b` | PR #13; version 0.3.0 (D2) | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
-| 11 | `krx/golive-p11-harness` | PR #16 | R-P0-13: 11 of 12 data-length tests red under ASan (heap-buffer-overflow in `Message::extractField`, or `std::length_error` → terminate for 95=-50), `#[ignore]` + known-red until the C++ pin; re-entrant and cross-session sends green; opt-in soak green (1.49 M messages, 0 lost) |
+| 11 | `krx/golive-p11-harness` | PR #16, merged | R-P0-13: 11 of 12 data-length tests red under ASan (heap-buffer-overflow in `Message::extractField`, or `std::length_error` → terminate for 95=-50), `#[ignore]` + known-red until the C++ pin; re-entrant and cross-session sends green; opt-in soak green (1.49 M messages, 0 lost) |
 | 12 | `krx/golive-p12` | PR #15, merged | macOS archives differ (Linux already identical), release binary has no debug info to split, policy clippy on go-live lines 90 → identical on both, 1.47 MB binary + 32.7 MB `.debug`, 30 (29 `unsafe_code`, 1 kept `unnecessary_wraps`) |
+| 13 | `krx/golive-p13` | PR #18, merged | Rocky `ar` without `D` → archives differ; with phase 12's flags identical; tests 150/0/13 |
+| 14 | `krx/golive-p14` | PR #19, merged | old fuzzer 0 crashes in 65.4 M inputs (88 edges) → C++ instrumented: over-read in 1.27 M inputs, ~105 s (1 099 edges) |
 
 ## 6. Handover notes
 
@@ -498,3 +503,35 @@ purpose for later validation, and dropping it breaks callers.
 release job must run `split-debuginfo.sh` (gateway repo). Production-matching distro image still
 open (which distro?). Policy-clippy findings outside go-live lines (363 library, upstream) and in
 tests are untouched.
+
+### Handover 13 — 2026-11-12
+**Built:** `rocky9` job in `krx_ci.yml` (D12): `rockylinux/rockylinux:9` (9.8) pinned by digest,
+`gcc-c++ cmake make git perl-Digest-SHA diffutils` from the Rocky repos before checkout (without
+git, checkout fetches no submodules), Rust 1.99.1, then `cargo test --workspace --locked`,
+`check-build-hardening.sh` and `check-reproducible-build.sh`. gcc 11.5, binutils 2.35, glibc 2.34.
+**Red → green:** Rocky's `ar` is not deterministic by default (Ubuntu's is): without phase 12's
+`ar D`/`ranlib -D` both archives differ, with them they are identical. The image has no `cmp`
+(added `diffutils`). Local container runs: 150 passed, 0 failed, 13 ignored, arm64 and amd64.
+**Away from the plan (lead):** the agent pinned Docker Hub's `rockylinux:9`, deprecated at 9.3;
+switched to the maintained `rockylinux/rockylinux:9`, which sets no `PATH` in its image config, so
+after rust-toolchain's `GITHUB_PATH` entry the PATH held only `~/.cargo/bin` and `bash` was not
+found; the job now sets the standard `PATH` in `container.env`. CI green on PR #18 at `7dbe48c`.
+**Left for the owner:** ASan, TSan and SSL run on Ubuntu only. A local cargo build writes
+`config.h` into the libquickfix source tree (submodule dirty; a C++ fork item).
+
+### Handover 14 — 2026-11-12
+Full note in PR #19. **Built:** `fuzz/` (own workspace and lock, `libfuzzer-sys`), four byte
+targets (no dictionary, FIX44, FIX44KRX, FIXT1.1+FIX50 merged spec), 98 seeds, `fix.dict`,
+`scripts/fuzz.sh` (libquickfix under `-fsanitize=address,fuzzer-no-link`), nightly
+`krx_fuzz.yml` (4 × 10 min, crash artifacts uploaded).
+**Red → green:** same target, seeds and dictionary: plain `cargo fuzz` 0 crashes in 65.4 M
+inputs, 88 edges; `scripts/fuzz.sh` finds the R-P0-13 heap over-read in 1.27 M inputs (~105 s,
+1 099 edges) through `90`/`91` (SecureData), so the C++ fix must cover every data field. Nightly
+mode, filter on: 4 targets × 10 min, 0 crashes.
+**Decisions:** no new public API in that phase (targets skip non-UTF-8: phase 15 adds the byte
+API, owner 12 Nov); FIXT uses the merged FIX50 spec; default feature `skip-r-p0-13` filters the
+known crash, `fuzz/known_crashes/` asserts it (delete both when the C++ fix is pinned). NCSA
+(libFuzzer's licence) added to the central `deny.toml` by the lead, owner-approved; `rust-policy-check
+fuzz --only deny` passes.
+**Left for the owner:** corpus caching between nightly runs and coverage reports; the
+two-dictionary session parse needs new API.
