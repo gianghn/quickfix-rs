@@ -2,3 +2,14 @@
 # scripts/san.sh skips them; the phase that fixes the item deletes its lines (KRX_BUILD_PLAN.md, D4).
 # Names are matched exactly across every test binary, so each name here must be unique.
 # Format: <address|thread> <exact test name> <item id>
+address acceptor_refuses_logon_when_95_is_1e5 R-P0-13
+address acceptor_refuses_logon_when_95_is_1e8 R-P0-13
+address acceptor_refuses_logon_when_95_is_2e9 R-P0-13
+address acceptor_refuses_logon_when_95_is_negative R-P0-13
+address initiator_refuses_logon_reply_when_95_is_1e5 R-P0-13
+address initiator_refuses_logon_reply_when_95_is_1e8 R-P0-13
+address initiator_refuses_logon_reply_when_95_is_2e9 R-P0-13
+address initiator_refuses_logon_reply_when_95_is_negative R-P0-13
+address try_build_message_returns_error_when_95_is_1e5 R-P0-13
+address try_build_message_returns_error_when_95_is_1e8 R-P0-13
+address try_build_message_returns_error_when_95_is_2e9 R-P0-13

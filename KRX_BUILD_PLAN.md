@@ -98,6 +98,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 10a | `krx/golive-p10` | PR #12 | hardening check 7 failures (git called, 4 flags missing, `-w`, shared cache) → 0, macOS and Linux |
 | 1–10b | — | merged into `krx/main` (`4dcb99f`), 12 Nov 2026 | TSan report-only: all 170 reports C++-only (D6) |
 | 10b | `krx/golive-p10b` | PR #13; version 0.3.0 (D2) | 13 compile errors on the new API, `get::<i32>` of a missing key `Ok`, drop 15.0 s, safe store impl compiled → all green; drop 4.7 s |
+| 11 | `krx/golive-p11-harness` | PR (base `krx/golive-p11`) | R-P0-13: 11 of 12 data-length tests red under ASan (heap-buffer-overflow in `Message::extractField`, or `std::length_error` → terminate for 95=-50), `#[ignore]` + known-red until the C++ pin; re-entrant and cross-session sends green; opt-in soak green (1.49 M messages, 0 lost) |
 
 ## 6. Handover notes
 
@@ -383,3 +384,66 @@ are on lines the go-live phases wrote or touched (git blame): 28 are `unsafe` it
 `-F unsafe_code` forbids and an FFI binding cannot avoid; about 60 are fixable (22 missing SAFETY
 comments, 22 doc backticks, 6 missing `# Errors`, a few `must_use`/raw-borrow/semicolon). Not
 fixed in this phase; inspection and proposal to the owner.
+
+### Handover 11 — 2026-11-12
+**Built:** R-P0-13 test part: `quickfix/tests/test_data_length.rs`, a Logon with `95=<n>|96=x`
+for n = 100000, 100000000, 2000000000, -50, three ways: raw TCP peer → MultiThreaded acceptor,
+raw TCP listener answering a MultiThreaded initiator's Logon, and in process through
+`DataDictionary::try_build_message` (12 tests). Expected once fixed: refused, never logged on,
+process alive (the acceptor then still answers a good Logon). The research harness
+(`gianghn/ClaudeResearch` `quickfix-rs-golive/harness/`), ported where the repo had no test:
+`test_reentry.rs` (`reenter`, `cross`: `on_msg_from_app` replies on the same session / forwards
+to the acceptor's other session while 2 client threads per session send 200 News each; every
+message and reply must arrive in 30 s, a stall aborts instead of hanging in `stop()`);
+`test_soak.rs` (`stress`, `latency`), opt-in, see below. `utils::add_session` for two-session
+settings (`build_settings` uses it).
+**Red → green:** R-P0-13, recorded per test (each run alone, the crash takes the binary down).
+ASan (Linux aarch64, `qfrs-san` image): 11 of 12 red — every 1e5/1e8/2e9 case is a
+heap-buffer-overflow in `FieldBase::FieldBase` ← `Message::extractField` ← `setString` (socket
+path via `Session::next` ← `ThreadedSocketConnection::processStream`); -50 on both socket sides is
+`std::length_error` escaping a QuickFIX thread → terminate (SIGABRT). Plain macOS: only 4 die
+(socket -50: SIGABRT; `try_build_message` 1e8/2e9: SIGBUS); the other 1e5/1e8/2e9 socket cases
+over-read silently and pass, which is why ASan is the gate. The 11 are `#[ignore = "red until
+R-P0-13: …"]` and `address` lines in `scripts/san-known-red.txt`. In process with -50 is green
+today (the binding's `catch (...)` turns `length_error` into an error), so it runs un-ignored.
+Re-entry and cross-session: green on first run (no deadlock, nothing lost), plain and ASan.
+**Opt-in soak (`test_soak.rs`, `#[ignore = "opt-in soak: …"]`):** run with
+`QFRS_SOAK_SECS=300 cargo test -p quickfix --release --test test_soak -- --ignored --nocapture`.
+Chaos: 2 sender threads on FileStores while a fixed cycle logs out/in, stops/starts and
+drops/rebuilds each side; every `Ok` send must arrive once, in order. Measured (macOS, release):
+30 s, 36 rounds, 1 493 575 sends, 0 lost/dup/out of order. Latency (memory store, echo from
+`on_msg_from_app`), 5000 round trips: p50 57 µs, p90 153, p99 1706, p99.9 10464, max 27396
+(a second run of 1000: p50 45, p99 101).
+**Already covered, not ported again:** harness `panic` (test_callback_failures), `raw nonutf8`
+and `nul` (test_wire_bytes; same byte path for any tag), `raw datalen` / `parse` (R-P0-13 above),
+`audit-repro` (swap_header / swap_to_app / `!Sync` app: phase 5 and 7 `compile_fail` doctests;
+fix_t_double_free: phase 5; stale_error: test_seqnum; unsupported / fieldnotfound:
+test_callback_failures), `api-probe` (43=Y, 150=C, missing 17, wrong 35, NaN price: KRX suite,
+phase 8), `run_tests_loop.sh` (`scripts/test-loop.sh`).
+**Checks:** `cargo test --workspace` (macOS) 150 passed, 0 failed, 13 ignored (11 R-P0-13 red,
+2 opt-in soak); clippy 1.99.1 `--workspace --all-targets -D warnings` exit 0; fmt ok;
+`scripts/san.sh address` whole workspace exit 0 (Linux container), and again on the three new
+binaries after the last edit. `lint.sh .` exit 1, every failure pre-existing: ast-grep (10
+upstream `#[allow]`s in `quickfix-spec-parser` / `quickfix-ffi`, ~15 000 findings in vendored
+C++), all 16 cpp-policy projects (vendored, D5), rust policy config/metadata/clippy/rustdoc (stop
+in `quickfix-spec-parser`) and test (`--all-features` needs MySQL, the `quickfix-ffi` build
+script fails); fmt, deny and msrv pass. None of its findings is in a file this phase changed,
+and its clippy never reaches `quickfix`, hence the measurement below.
+**Lint, measured as in 10b** (policy flags on `quickfix --tests`, `--no-deps`): the new files
+have 33 findings, all `expect` in helper functions (`expect_used` / `unwrap_in_result`): the
+policy's `allow-expect-in-tests` only covers `#[test]` functions, not helpers in integration
+test files — the same style as `utils/raw_peer.rs` and `test_callback_failures.rs`. Fixed on the
+way: SAFETY placement, a 91-line function, nesting, `let _ =` on `must_use`, doc backticks,
+`eprintln!`. `settings_builder.rs` keeps its 3 older findings (`ServerType` by value, no `Debug`,
+`expect`).
+**Decisions taken:** (1) soak tests are `#[ignore]`d, so `cargo test -- --ignored` (D4's way to
+see red tests) also runs them; their ignore reason says "opt-in soak", not "red". (2) Known-red
+lines only for `address`, the sanitizer the red result was recorded under (TSan is report-only,
+D6). (3) `Session::reset` stays out of the chaos cycle: it wipes the store by design (R-P1-7).
+**Not ported:** the harness's `fuzz/` target (needs `libfuzzer-sys` and cargo-fuzz: a new
+dependency; proposal: a `fuzz/` crate outside the workspace, nightly CI job); its watchdog's
+`gdb` stack dumps and `repro_segv_loop.sh` (debug aids, not tests); the api-probe `0.1+0.2`
+price print (f64 money, banned by the house rules, see handover 8).
+**Left for the owner:** R-P0-13 stays red until the C++ fork cherry-picks #779 (must also refuse
+a negative length) and the submodule is bumped; that phase deletes the 11 `#[ignore]`s and
+known-red lines.
