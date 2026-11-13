@@ -15,8 +15,8 @@ Keep this file up to date when a patch is added, sent upstream or dropped.
 
 `krx/main` was started at upstream `cc2b7a5` (release 0.2.2, 2026-10). The submodule
 `quickfix-ffi/libquickfix` points at our QuickFIX fork `gianghn/quickfix`, branch `krx/main`
-(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `11703b2a` since go-live phase 16
-(was `33b12daf`). Upstream pins QuickFIX
+(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `e1b1559e` since go-live phase 19
+(`11703b2a` in phase 16, `33b12daf` before). Upstream pins QuickFIX
 master `386ce46e`; on a sync, ours wins.
 
 ## Our patches on upstream 0.2.2
@@ -65,6 +65,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 10b | Rejects carry tag/text; `stop_force` (used by `Drop`); `Session::is_enabled`/`refresh`/`send_test_request`; `Dictionary::get` errors instead of `Ok(0)`; `u32` socket buffers; `TimestampPrecision`; `unsafe trait FfiMessageStoreFactory` | `MsgFromAppError::IncorrectTagValue` → `IncorrectTagValue { tag }` (same for `FieldNotFound`, `IncorrectDataFormat`, `RejectLogon { text }`); a custom store factory needs `unsafe impl`; drop no longer waits 10 s for Logout answers (call `stop()` first for a graceful stop) |
 | 15 | Byte-level parse: `Message::try_from_bytes`, `DataDictionary::try_build_message_bytes` (non-UTF-8 and NULs pass through); fuzz targets use them | none (additive); parse stored or replayed frames from `&[u8]` with these instead of `try_from_text`/`try_build_message`, which refuse a NUL and need UTF-8. A frame with an over-long data length still over-reads until R-P0-13 |
 | 16 | `libquickfix` pinned at C++ fork `krx/main` @ `11703b2a`: R-P0-13 fixed (a data length out of the frame or negative is refused, in every data field), `FIX::Mutex` recursive and `SessionState` flags atomic, plain acceptor closes each socket once, `Session::send` false when stored but not written; new settings `SendTimeout`, `FileStoreSync` | no code change. `Session::send` now returns `Ok(false)` when the message was stored but not written (handle it like a down session). `.ini`: consider `FileStoreSync=Y`, `SendTimeout` (default half of HeartBtInt), `ReconnectInterval` 1–2 s for a 5 s failover. `send_to_target` still returns `Ok` until phase 17 |
+| 19 | `Message::as_message_mut()`: an owned message as the `MessageMut` a callback takes; `libquickfix` pinned at `e1b1559e` (C++ teardown fixes 6.1, 6.2, 6.4, 6.5) | none (additive); unit-test `on_msg_to_app`/`on_msg_to_admin` by calling them with `&mut msg.as_message_mut()` instead of moving their logic into helper methods. `on_logout` now runs outside QuickFIX's session lock |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to

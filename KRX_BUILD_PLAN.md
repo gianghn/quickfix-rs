@@ -67,6 +67,7 @@ fix arrives, so CI stays green.
 | D18 | TSan gate after the bump (changes D6) | **Decided by the owner, 13 Nov 2026:** TSan becomes blocking (phase 18) once the pinned C++ leaves no reports, or only ones its phase 6 owns | phase 18 |
 | D19 | `SessionId` across threads (gateway request, 13 Nov 2026) | make it `Send + Sync` with two `unsafe impl`s and a written `SAFETY:` (not "document it"): `FIX::SessionID` changes only in `fromString`, which the binding does not expose; every bound call is `new`, `copy`, `delete` or a `const` getter, and `toString` returns the string frozen at construction. The alternative, a Rust-only `SessionId` of strings rebuilt in C++ per call, costs an allocation per send and changes every FFI signature | phase 20 |
 | D20 | Callback message for tests (gateway request, 13 Nov 2026) | `Message::as_message_mut(&mut self) -> MessageMut<'_>`, safe: the view borrows the message mutably and frees nothing (no `Drop`), as in a callback | phase 19 |
+| D21 | Teardown race found by the blocking TSan job (D18) | **Decided by the owner, 13 Nov 2026:** fixed in the C++ fork (its 6.5, P1-7, upstream #740: `Acceptor::stop` joins the start thread before `onStop`), not suppressed; phase 19 pins `krx/main` @ `e1b1559e`, which also brings 6.1/6.2 (a dropped connection ends its session under the lock) and 6.4 (`onLogout` after the session lock is released) | phase 19 |
 
 ## 4. Phases
 
@@ -158,8 +159,9 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 13 | `krx/golive-p13` | PR #18, merged | Rocky `ar` without `D` → archives differ; with phase 12's flags identical; tests 150/0/13 |
 | 14 | `krx/golive-p14` | PR #19, merged | old fuzzer 0 crashes in 65.4 M inputs (88 edges) → C++ instrumented: over-read in 1.27 M inputs, ~105 s (1 099 edges) |
 | 15 | `krx/golive-p15-api` | PR #20, merged | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
-| 16 | `krx/golive-p16` | PR open | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
-| 18 | `krx/golive-p18` | PR open (on 16) | TSan job red and ignored (`continue-on-error`; 202 reports on `33b12daf`) → 0 reports on `11703b2a`, job blocking |
+| 16 | `krx/golive-p16` | PR #21, merged | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
+| 18 | `krx/golive-p18` | PR #22, merged | TSan job red and ignored (`continue-on-error`; 202 reports on `33b12daf`) → 0 reports on `11703b2a`, job blocking |
+| 19 | `krx/golive-p19` | PR open | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505) |
 
 ## 6. Handover notes
 
@@ -632,3 +634,21 @@ and its job-summary list. **Red → green:** TSan job red but ignored (202 repor
 `33b12daf`; `krx/main`'s last run "11 targets failed") → 0 reports, all 59 test binaries ok on
 `11703b2a` (phase 16's CI run). **Left for the owner:** a race the C++ fork's phase 6 (teardown)
 still owns would now fail CI; fix it there, never with a suppression.
+
+### Handover 19 — 2026-11-13
+**Built:** D20: `Message::as_message_mut(&mut self) -> MessageMut<'_>` (a second, non-owning
+handle in the view, which has no `Drop`), with a runnable doc example and two `compile_fail`
+doctests (row 19.4); `ApplicationCallback`'s docs point to it. Docs: CHANGELOG "Unreleased"
+→ "Added", fork notes row 19, gateway handover section 2.
+**Red → green:** `test_callback_message.rs` rows 19.1–19.3: 3 → 0 (red: E0599, no method
+`as_message_mut`). Row 19.4: each `compile_fail` snippet checked for its error (E0716 view
+outlives the message, E0505 message moved while viewed). Row 19.5: the three tests under
+`scripts/san.sh address` (leak check on): clean.
+**Found on the way:** `ApplicationCallback`'s R-P0-3 `compile_fail` example typed the message
+`&mut Message`, so it failed on the signature, not on `mem::take`; now `&mut MessageMut<'_>`,
+failing with E0277 (no `Default`) as intended. The blocking TSan job (D18) failed on PR #24 in
+the `lib.rs` example, which starts an acceptor and stops it at once: a data race in
+`~ThreadedSocketAcceptor` and a thread never joined, because `Acceptor::stop` ran `onStop`
+before `onStart` had added the accept thread. Not phase 19's code and timing-dependent (phases
+16 and 18 passed); D21: fixed in the C++ fork (6.5) and pinned here at `e1b1559e`.
+**Left for the owner:** none.

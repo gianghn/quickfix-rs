@@ -161,12 +161,15 @@ impl AsFixCallbackCode for MsgFromAppError {
 /// use quickfix::*;
 /// struct Thief;
 /// impl ApplicationCallback for Thief {
-///     fn on_msg_to_app(&self, msg: &mut Message, _: &SessionId) -> Result<(), MsgToAppError> {
+///     fn on_msg_to_app(&self, msg: &mut MessageMut<'_>, _: &SessionId) -> Result<(), MsgToAppError> {
 ///         let _stolen = std::mem::take(msg);
 ///         Ok(())
 ///     }
 /// }
 /// ```
+///
+/// To unit-test `on_msg_to_admin` or `on_msg_to_app`, build the message and pass
+/// [`Message::as_message_mut`]; the callback's changes stay on that message.
 ///
 /// A panic in any of these methods aborts the process, so the message it was handling is neither
 /// consumed nor sent: the store still expects it and the peer resends it after a restart.
