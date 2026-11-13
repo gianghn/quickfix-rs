@@ -74,7 +74,7 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 |---|---|---|
 | ~~R-P0-13 data-length over-read~~ | fixed in the C++ fork, pinned in phase 16 (`11703b2a`): the message is refused | none needed; take a `krx/main` commit at or after phase 16 |
 | R-P0-12 send while down | `send_to_target` returns `Ok`, sent later as PossDup (C++ now reports it; Rust surfaces it in phase 17) | the logged-on check and stale-resend `DoNotSend` above |
-| C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16); teardown races remain on the C++ fork's phase 6 | stop and join senders before `stop()` (section 3) |
+| C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16), and the teardown races of acceptor stop, dropped connections and `onLogout` (phase 19, `e1b1559e`); the C++ fork's 6.6 (`setSession` failure) is still open | stop and join senders before `stop()` (section 3) |
 
 ## 6. Done when
 
