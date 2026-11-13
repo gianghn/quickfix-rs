@@ -25,7 +25,8 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
       a `Mutex`.
 - [ ] `on_msg_to_admin` / `on_msg_to_app` take `&mut MessageMut<'_>`; helpers typed `&mut Header`,
       `&Group` take `HeaderMut`, `GroupMut` (R-P0-3). A callback message can no longer be moved out
-      with `mem::take`/`swap`: copy what you keep.
+      with `mem::take`/`swap`: copy what you keep. To unit-test these callbacks, build a `Message`
+      and pass `&mut msg.as_message_mut()` (phase 19); the trial build's helper methods can go.
 - [ ] `Message::from_fix_message_t` is `unsafe` (R-P0-2); state where the pointer comes from in a
       `SAFETY:` comment, and check every use in `src/port_fix`.
 - [ ] Generated messages: `X::from(msg)` → `X::try_from(msg)?`; on inbound messages use

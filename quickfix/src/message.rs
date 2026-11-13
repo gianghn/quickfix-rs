@@ -13,7 +13,7 @@ use crate::{
     header::Header,
     trailer::Trailer,
     utils::{ffi_code_to_result, read_checked_cstr},
-    view::{Borrowed, GroupMut, HeaderMut, TrailerMut},
+    view::{Borrowed, GroupMut, HeaderMut, MessageMut, TrailerMut},
     FieldMap, IntoFixValue, QuickFixError,
 };
 
@@ -217,6 +217,50 @@ impl Message {
             unsafe { FixMessage_getHeaderRef(self.0) }.expect("Fail to get ptr on message header");
 
         f(&mut Borrowed::new(Header(ptr)))
+    }
+
+    /// Borrow this message as the [`MessageMut`] that
+    /// [`ApplicationCallback::on_msg_to_admin`](crate::ApplicationCallback::on_msg_to_admin) and
+    /// [`ApplicationCallback::on_msg_to_app`](crate::ApplicationCallback::on_msg_to_app) take, so
+    /// a unit test can call a callback with a message it built. What the callback changes stays on
+    /// this message.
+    ///
+    /// ```
+    /// # use quickfix::*;
+    /// struct Stamp;
+    /// impl ApplicationCallback for Stamp {
+    ///     fn on_msg_to_app(&self, msg: &mut MessageMut<'_>, _: &SessionId) -> Result<(), MsgToAppError> {
+    ///         msg.set_field(58, "checked").map_err(|_| MsgToAppError::DoNotSend)
+    ///     }
+    /// }
+    ///
+    /// let mut msg = Message::new();
+    /// let session = SessionId::try_new("FIX.4.4", "SENDER", "RECEIVER", "")?;
+    /// Stamp.on_msg_to_app(&mut msg.as_message_mut(), &session).ok();
+    /// assert_eq!(msg.get_field(58).as_deref(), Some("checked"));
+    /// # Ok::<(), QuickFixError>(())
+    /// ```
+    ///
+    /// The view borrows the message, so it cannot outlive it:
+    ///
+    /// ```compile_fail
+    /// # use quickfix::*;
+    /// let view = Message::new().as_message_mut();
+    /// let _ = view.get_field(58);
+    /// ```
+    ///
+    /// and the message cannot be used while the view lives:
+    ///
+    /// ```compile_fail
+    /// # use quickfix::*;
+    /// let mut msg = Message::new();
+    /// let mut view = msg.as_message_mut();
+    /// drop(msg);
+    /// let _ = view.set_field(58, "late");
+    /// ```
+    pub fn as_message_mut(&mut self) -> MessageMut<'_> {
+        // The view has no `Drop`: this second handle never frees the message `self` owns.
+        Borrowed::new(Self(self.0))
     }
 
     /// Clone struct trailer part.

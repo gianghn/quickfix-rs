@@ -8,6 +8,9 @@
   raw FIX bytes, so non-UTF-8 text (`58=caf\xE9`) and NULs in data fields (`96=a\0b`) are no
   longer refused or cut; the parsed message serializes back byte-exact. C:
   `FixMessage_fromBytes(data, len)` and `FixMessage_fromBytesAndDictionary` (go-live phase 15).
+- `Message::as_message_mut()` borrows a message as the `MessageMut` that `on_msg_to_admin` and
+  `on_msg_to_app` take, so those callbacks can be unit-tested with a message the test built
+  (go-live phase 19).
 
 ### Changed
 
