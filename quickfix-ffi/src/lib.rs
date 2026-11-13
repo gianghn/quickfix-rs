@@ -365,6 +365,15 @@ extern "C" {
         dictionary: FixDataDictionary_t,
     ) -> Option<FixMessage_t>;
 
+    /// Parses `len` bytes from `data`, NULs and non-UTF-8 bytes included.
+    pub fn FixMessage_fromBytes(data: *const ffi::c_char, len: usize) -> Option<FixMessage_t>;
+
+    pub fn FixMessage_fromBytesAndDictionary(
+        data: *const ffi::c_char,
+        len: usize,
+        dictionary: FixDataDictionary_t,
+    ) -> Option<FixMessage_t>;
+
     #[must_use]
     pub fn FixMessage_setField(obj: FixMessage_t, tag: i32, value: *const ffi::c_char) -> i8;
 

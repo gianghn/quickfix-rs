@@ -856,6 +856,19 @@ Message *FixMessage_fromStringAndDictionary(const char *text, const DataDictiona
   CATCH_OR_RETURN_NULL({ return new Message(text, *dictionary, /* validate = */ true); });
 }
 
+// `len` bytes from `data`, NULs and non-UTF-8 bytes included (phase 15).
+Message *FixMessage_fromBytes(const char *data, size_t len) {
+  RETURN_VAL_IF_NULL(data, NULL);
+  CATCH_OR_RETURN_NULL({ return new Message(std::string(data, len), /* validate = */ false); });
+}
+
+Message *FixMessage_fromBytesAndDictionary(const char *data, size_t len, const DataDictionary *dictionary) {
+  RETURN_VAL_IF_NULL(data, NULL);
+  RETURN_VAL_IF_NULL(dictionary, NULL);
+
+  CATCH_OR_RETURN_NULL({ return new Message(std::string(data, len), *dictionary, /* validate = */ true); });
+}
+
 const char *FixMessage_getField(const Message *obj, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
   CATCH_OR_RETURN_NULL({ return obj->getField(tag).c_str(); });

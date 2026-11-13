@@ -124,6 +124,13 @@ fn data_dictionary_refuses_message(len: &'static [u8]) -> Result<(), QuickFixErr
     Ok(())
 }
 
+fn data_dictionary_refuses_bytes(len: &'static [u8]) -> Result<(), QuickFixError> {
+    let dd = DataDictionary::try_from_path(FIX44)?;
+    let wire = logon_with_data_length(header(b"A", b"1"), len);
+    assert!(dd.try_build_message_bytes(&wire).is_err());
+    Ok(())
+}
+
 #[test]
 #[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn acceptor_refuses_logon_when_95_is_1e5() -> Result<(), QuickFixError> {
@@ -193,4 +200,27 @@ fn try_build_message_returns_error_when_95_is_2e9() -> Result<(), QuickFixError>
 #[test]
 fn try_build_message_returns_error_when_95_is_negative() -> Result<(), QuickFixError> {
     data_dictionary_refuses_message(b"-50")
+}
+
+#[test]
+#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
+fn try_build_message_bytes_returns_error_when_95_is_1e5() -> Result<(), QuickFixError> {
+    data_dictionary_refuses_bytes(b"100000")
+}
+
+#[test]
+#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
+fn try_build_message_bytes_returns_error_when_95_is_1e8() -> Result<(), QuickFixError> {
+    data_dictionary_refuses_bytes(b"100000000")
+}
+
+#[test]
+#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
+fn try_build_message_bytes_returns_error_when_95_is_2e9() -> Result<(), QuickFixError> {
+    data_dictionary_refuses_bytes(b"2000000000")
+}
+
+#[test]
+fn try_build_message_bytes_returns_error_when_95_is_negative() -> Result<(), QuickFixError> {
+    data_dictionary_refuses_bytes(b"-50")
 }

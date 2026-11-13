@@ -5,14 +5,14 @@ workspace, so `cargo build`/`cargo test` at the repository root never see them o
 
 | Target | Parses the fuzzer's bytes with |
 |---|---|
-| `parse_no_dict` | no dictionary (`Message::try_from_text`) |
+| `parse_no_dict` | no dictionary (`Message::try_from_bytes`) |
 | `parse_fix44` | `FIX44.xml` |
 | `parse_fix44krx` | `quickfix-msgkrx/src/FIX44KRX.xml` |
 | `parse_fixt11_fix50` | `quickfix-msg50/src/spec.xml` (FIXT1.1 session + FIX50 application in one file) |
 
-Each one serializes what parsed. The input is taken as raw bytes. The binding only accepts
-`&str`, so the targets skip input that is not UTF-8 and do not mangle it (the old research
-harness decoded it lossily, which shifted `9=`, `95=` and `10=`).
+Each one serializes what parsed. The input goes to QuickFIX as raw bytes, non-UTF-8 and NULs
+included (`try_from_bytes` / `try_build_message_bytes`, phase 15); the old research harness
+decoded it lossily, which shifted `9=`, `95=` and `10=`.
 
 ## Run locally
 

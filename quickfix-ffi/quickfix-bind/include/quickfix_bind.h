@@ -182,6 +182,8 @@ FixMessage_t *FixMessage_new();
 FixMessage_t *FixMessage_copy(const FixMessage_t *src);
 FixMessage_t *FixMessage_fromString(const char *text);
 FixMessage_t *FixMessage_fromStringAndDictionary(const char *text, const FixDataDictionary_t *dictionary);
+FixMessage_t *FixMessage_fromBytes(const char *data, size_t len);
+FixMessage_t *FixMessage_fromBytesAndDictionary(const char *data, size_t len, const FixDataDictionary_t *dictionary);
 const char *FixMessage_getField(const FixMessage_t *obj, int32_t tag);
 const char *FixMessage_getFieldBytes(const FixMessage_t *obj, int32_t tag, uint64_t *len);
 int8_t FixMessage_setField(FixMessage_t *obj, int32_t tag, const char *value);
