@@ -129,6 +129,13 @@ pub enum QuickFixError {
     /// Direct mapping to quickfix `FIX::SocketCloseFailed` exception found in `Exceptions.h`.
     #[error("quickfix: {0}")]
     SocketCloseFailed(String),
+
+    /// `QuickFIX` did not write the message now (KRX R-P0-12): the session is not logged on, the
+    /// write failed, or `on_msg_to_app` returned `DoNotSend`. In the first two cases the message
+    /// may be stored and go out later as a possible duplicate (PossDup) when the counterparty
+    /// asks for a resend; treat it as not sent and decide whether a late copy is acceptable.
+    #[error("message not sent: {0}")]
+    NotSent(String),
 }
 
 impl QuickFixError {

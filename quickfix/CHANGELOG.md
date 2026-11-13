@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased (KRX fork, krx/main)
+## Unreleased (KRX fork, krx/main; next release 0.4.0)
+
+### Breaking changes
+
+- `send_to_target` returns `Err(QuickFixError::NotSent)` when `QuickFIX` did not write the
+  message now: the session is not logged on, the write failed, or `on_msg_to_app` returned
+  `DoNotSend`. It used to return `Ok`, and a message stored while the session was down went out
+  later as a PossDup resend (R-P0-12, go-live phase 17). A stored message can still be resent
+  that way; check a resent order's age in `on_msg_to_app`. An exhaustive `match` on
+  `QuickFixError` needs the new variant.
 
 ### Added
 

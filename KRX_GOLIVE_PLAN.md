@@ -25,7 +25,8 @@ R-P2-3/4/5/6, Phase 0 (gateway) and Phase 4 (evidence).
 R-P0-12 needs phase 17 here (`send_to_target` must surface C++'s `false`). The CI TSan job was
 report-only (D6) while every report (202 in the last run) had C++ frames on both sides
 (`FIX::Mutex`, `SessionState` flags and times); on the new pin it reports 0, and phase 18 makes
-it blocking (D18).
+it blocking (D18). Later the same day phase 17 closed R-P0-12 on the Rust side
+(`QuickFixError::NotSent`), so 12 of 13 P0s are done; R-P0-11 waits on the member spec.
 
 ## How the work is split
 
@@ -138,10 +139,13 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       Fix: check every message, field, requiredness and enum against the HOSE/KRX member spec; the
       runtime dictionary must be a superset of the spec.
       Test: replay the full certification/UAT capture: zero outbound 35=3; a 35=8 with 58 and `150=C` reaches `from_app`.
-- [ ] **R-P0-12 `send_to_target` returns `Ok` while the session is down** (1.23 M of 1.62 M chaos orders
+- [x] **R-P0-12 `send_to_target` returns `Ok` while the session is down** (1.23 M of 1.62 M chaos orders
       went out later as PossDup). Where: `session.rs:13-18, 58-61`, `quickfix_bind.cpp:1069-1077`.
       Fix: once C++ P0-6 makes the bool truthful, return `SendOutcome { Sent, Stored, Dropped }`.
       Test: send during disconnect/reconnect; stale order is gap-filled, never reaches the simulator.
+      Done: C++ P0-6 (phase 16) and go-live phase 17. One error, `QuickFixError::NotSent`, instead
+      of `SendOutcome` (D22): C++'s `bool` does not tell stored from dropped. The gap-fill of a
+      stale resend is the gateway's `DoNotSend` check (handover sections 3 and 6).
 - [x] **R-P1-1 Seqnum APIs return error codes as seqnums and take any `i32`** (fork-added).
       Where: `session.rs:73-89`, `quickfix_bind.cpp:1131-1139`.
       Fix: `Result<u64, QuickFixError>`; take `u64`, reject < 1; take the session lock or document "logged out only".

@@ -34,6 +34,9 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
       `try_get_*` (they return `FieldError`, never panic) (R-P0-9).
 - [ ] `MsgFromAppError::IncorrectTagValue` → `IncorrectTagValue { tag }` (likewise `FieldNotFound`,
       `IncorrectDataFormat`; `RejectLogon { text }`); seqnum APIs take and return `u64`/`Result`.
+- [ ] `send_to_target` returns `Err(QuickFixError::NotSent)` when the order was not written now
+      (phase 17, R-P0-12): session down, write failed, or your own `DoNotSend`. Report it to the
+      OMS as not sent; add `NotSent` to any exhaustive `match` on `QuickFixError`.
 
 ## 3. Phase 0 rules (still needed with 0.3.0)
 
@@ -42,8 +45,9 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
       was not handled.
 - [ ] Refuse new orders unless the session `is_logged_on()`. In `on_msg_to_app` return `DoNotSend`
       for resent NewOrderSingle / Cancel / Replace older than N seconds, and report them to the OMS
-      as not sent. Reason: `send_to_target` still returns `Ok` while the session is down and the
-      order goes out later as a PossDup (R-P0-12; needs a C++ fix).
+      as not sent. Reason: `send_to_target` now returns `NotSent` while the session is down
+      (phase 17), but QuickFIX has already stored the order, and it goes out as a PossDup when
+      the exchange asks for a resend after the reconnect (R-P0-12).
 - [ ] Prices from a decimal or integer-tick type, written with `set_field(44, &str)` (R-P0-10);
       `f64` NaN/inf are now refused, but `0.1 + 0.2` still prints badly.
 - [ ] Stop and join every sender thread before `stop()` or dropping an initiator/acceptor. A
@@ -74,7 +78,7 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 | Risk | What happens | Gateway mitigation |
 |---|---|---|
 | ~~R-P0-13 data-length over-read~~ | fixed in the C++ fork, pinned in phase 16 (`11703b2a`): the message is refused | none needed; take a `krx/main` commit at or after phase 16 |
-| R-P0-12 send while down | `send_to_target` returns `Ok`, sent later as PossDup (C++ now reports it; Rust surfaces it in phase 17) | the logged-on check and stale-resend `DoNotSend` above |
+| R-P0-12 send while down | `send_to_target` returns `NotSent` (phase 17), but the stored order can still go out later as a PossDup resend | the logged-on check, treating `NotSent` as not sent, and the stale-resend `DoNotSend` above |
 | C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16), and the teardown races of acceptor stop, dropped connections and `onLogout` (phase 19, `e1b1559e`); the C++ fork's 6.6 (`setSession` failure) is still open | stop and join senders before `stop()` (section 3) |
 
 ## 6. Done when
