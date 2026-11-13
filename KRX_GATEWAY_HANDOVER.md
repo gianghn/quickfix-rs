@@ -1,15 +1,15 @@
-# Gateway handover: moving `krx_gateway_rust` to quickfix-rs 0.3.0
+# Gateway handover: moving `krx_gateway_rust` to quickfix-rs 0.4.0
 
 For the team that owns `enCapital/krx_gateway_rust`. What the gateway must change to run on this
-fork's `krx/main` (version 0.3.0), and what it must still guard against because the fixes are not in
+fork's `krx/main` (version 0.4.0), and what it must still guard against because the fixes are not in
 the library yet. Written 12 November 2026; the item ids (R-P0-n …) are those of
 `KRX_GOLIVE_PLAN.md`, the API changes per phase are in `KRX_FORK_NOTES.md` ("Go-live fixes on
-`krx/main`") and `quickfix/CHANGELOG.md` (0.3.0).
+`krx/main`") and `quickfix/CHANGELOG.md` (0.3.0 and 0.4.0).
 
 ## 1. Take the new version
 
 - [ ] Depend on `gianghn/quickfix-rs` `krx/main` pinned by commit (`rev = "…"`), all crates at
-      `0.3.0`; check out submodules recursively before building (the build no longer fetches them).
+      `0.4.0`; check out submodules recursively before building (the build no longer fetches them).
 - [ ] Drop the `experimental-multi-thread-support` feature from `Cargo.toml` (removed upstream).
 - [ ] Ask for `FixSocketServerKind::MultiThreaded` in `src/port_fix/runner.rs`,
       `tests/support/src/connection_safety.rs` and `tests/support/src/checker.rs`. `SingleThreaded`
@@ -38,7 +38,7 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
       (phase 17, R-P0-12): session down, write failed, or your own `DoNotSend`. Report it to the
       OMS as not sent; add `NotSent` to any exhaustive `match` on `QuickFixError`.
 
-## 3. Phase 0 rules (still needed with 0.3.0)
+## 3. Phase 0 rules (still needed with 0.4.0)
 
 - [ ] `panic = "abort"` in `[profile.release]` and `[profile.dev]`, and a supervisor that restarts
       the process. The library now aborts on a callback panic itself (R-P0-1); the peer resends what
@@ -83,7 +83,7 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 
 ## 6. Done when
 
-- [ ] The gateway's own tests pass on 0.3.0 with `MultiThreaded`, including `test_fd_double_close`,
+- [ ] The gateway's own tests pass on 0.4.0 with `MultiThreaded`, including `test_fd_double_close`,
       `test_partial_send` and `fix_connection_safety.feature`.
 - [ ] A UAT drill: kill the process mid-flow (abort), restart, and check the exchange resend
       delivers the lost message; disconnect, send, reconnect and check the stale order is
