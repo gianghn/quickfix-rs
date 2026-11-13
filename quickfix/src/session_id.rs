@@ -9,7 +9,19 @@ use quickfix_ffi::{
 use crate::{utils::read_checked_cstr, QuickFixError};
 
 /// Unique session id consists of BeginString, SenderCompID and TargetCompID.
+///
+/// `Send + Sync`: an app can keep one (a `clone()` of the `&SessionId` a callback gets) and send
+/// through it from any thread, or share it in an `Arc`.
 pub struct SessionId(pub(crate) FixSessionID_t);
+
+// SAFETY: `FIX::SessionID` changes only in `fromString`, which the binding does not expose. Every
+// bound call (`new`, `copy`, `delete`, the getters, `toString`) leaves it as built, and `toString`
+// returns the string frozen in its constructor, so threads only ever read it, and the owned copy
+// can be freed on any thread. A callback's `&SessionId` is QuickFIX's own and lives only for the
+// call.
+unsafe impl Send for SessionId {}
+// SAFETY: as for `Send`: no bound call writes to the object after construction.
+unsafe impl Sync for SessionId {}
 
 impl SessionId {
     /// Try create new struct from all its inner components.

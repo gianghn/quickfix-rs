@@ -11,6 +11,8 @@
 - `Message::as_message_mut()` borrows a message as the `MessageMut` that `on_msg_to_admin` and
   `on_msg_to_app` take, so those callbacks can be unit-tested with a message the test built
   (go-live phase 19).
+- `SessionId` is `Send + Sync`: an app can keep a clone of the session it logged on with and send
+  through it from any thread (go-live phase 20).
 
 ### Changed
 

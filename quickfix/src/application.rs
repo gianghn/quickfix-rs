@@ -171,6 +171,20 @@ impl AsFixCallbackCode for MsgFromAppError {
 /// To unit-test `on_msg_to_admin` or `on_msg_to_app`, build the message and pass
 /// [`Message::as_message_mut`]; the callback's changes stay on that message.
 ///
+/// The `&SessionId` a callback gets is `QuickFIX`'s and lives only for the call; keep a
+/// `clone()` (a [`SessionId`] is `Send + Sync`), not the reference:
+///
+/// ```compile_fail
+/// use std::sync::Mutex;
+/// use quickfix::*;
+/// struct Keep(Mutex<Option<&'static SessionId>>);
+/// impl ApplicationCallback for Keep {
+///     fn on_logon(&self, session: &SessionId) {
+///         *self.0.lock().unwrap() = Some(session);
+///     }
+/// }
+/// ```
+///
 /// A panic in any of these methods aborts the process, so the message it was handling is neither
 /// consumed nor sent: the store still expects it and the peer resends it after a restart.
 pub trait ApplicationCallback: Send + Sync {

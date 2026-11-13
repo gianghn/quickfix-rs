@@ -22,7 +22,8 @@ the library yet. Written 12 November 2026; the item ids (R-P0-n …) are those o
 The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line per phase.
 
 - [ ] App and log types are `Send + Sync` (R-P0-4). A `Cell`/`RefCell` field becomes an atomic or
-      a `Mutex`.
+      a `Mutex`. `SessionId` is `Send + Sync` (phase 20): keep `session.clone()` from `on_logon`,
+      not its text as the trial build did; never the `&SessionId` itself.
 - [ ] `on_msg_to_admin` / `on_msg_to_app` take `&mut MessageMut<'_>`; helpers typed `&mut Header`,
       `&Group` take `HeaderMut`, `GroupMut` (R-P0-3). A callback message can no longer be moved out
       with `mem::take`/`swap`: copy what you keep. To unit-test these callbacks, build a `Message`
