@@ -46,11 +46,28 @@ pub(crate) fn while_deleting<T>(f: impl FnOnce() -> T) -> T {
 }
 
 /// Send message to target design in session ID.
+///
+/// `Ok` means `QuickFIX` wrote the message to the counterparty now.
+///
+/// # Errors
+///
+/// - `QuickFixError::NotSent` when it did not (R-P0-12): the session is not logged on, the write
+///   failed, or `on_msg_to_app` returned `DoNotSend`. A message stored but not written may still
+///   go out later as a PossDup resend, so check its age when it is resent (in `on_msg_to_app`).
+/// - `QuickFixError::SessionNotFound` when no started acceptor or initiator has `session_id`.
 pub fn send_to_target(msg: Message, session_id: &SessionId) -> Result<(), QuickFixError> {
     // NOTE: Message may be changed by real library. Just consume it so nothing will leak to rust code.
     // SAFETY: `msg` and `session_id` own live C++ objects for the call; the gate keeps any session
     // the id finds from being deleted mid-send.
-    while_sending(|| ffi_code_to_result(unsafe { FixSession_sendToTarget(msg.0, session_id.0) }))
+    let written = while_sending(|| {
+        ffi_code_to_bool(unsafe { FixSession_sendToTarget(msg.0, session_id.0) })
+    })?;
+    if written {
+        return Ok(());
+    }
+    Err(QuickFixError::NotSent(format!(
+        "{session_id:?}: not logged on, write failed, or refused by on_msg_to_app"
+    )))
 }
 
 /// FIX Session.

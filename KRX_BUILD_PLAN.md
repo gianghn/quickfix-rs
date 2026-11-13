@@ -68,6 +68,7 @@ fix arrives, so CI stays green.
 | D19 | `SessionId` across threads (gateway request, 13 Nov 2026) | make it `Send + Sync` with two `unsafe impl`s and a written `SAFETY:` (not "document it"): `FIX::SessionID` changes only in `fromString`, which the binding does not expose; every bound call is `new`, `copy`, `delete` or a `const` getter, and `toString` returns the string frozen at construction. The alternative, a Rust-only `SessionId` of strings rebuilt in C++ per call, costs an allocation per send and changes every FFI signature | phase 20 |
 | D20 | Callback message for tests (gateway request, 13 Nov 2026) | `Message::as_message_mut(&mut self) -> MessageMut<'_>`, safe: the view borrows the message mutably and frees nothing (no `Drop`), as in a callback | phase 19 |
 | D21 | Teardown race found by the blocking TSan job (D18) | **Decided by the owner, 13 Nov 2026:** fixed in the C++ fork (its 6.5, P1-7, upstream #740: `Acceptor::stop` joins the start thread before `onStop`), not suppressed; phase 19 pins `krx/main` @ `e1b1559e`, which also brings 6.1/6.2 (a dropped connection ends its session under the lock) and 6.4 (`onLogout` after the session lock is released) | phase 19 |
+| D22 | Send truth: error or `Ok(false)` (phase 17) | **Decided by the owner, 13 Nov 2026:** `send_to_target` keeps `Result<(), QuickFixError>` and returns the new `QuickFixError::NotSent` when C++ returns false (stored but not written, write failed, or `DoNotSend`), so a caller that uses `?` cannot treat a not-sent order as sent. Breaking (a caller that relied on `Ok`, an exhaustive `match` on the error); the next release is 0.4.0. `Session::send` keeps `Result<bool>` (phase 16) | phase 17 |
 
 ## 4. Phases
 
@@ -134,6 +135,16 @@ Phase 20 BDD checklist (`quickfix/tests/test_session_id_threads.rs`; red = befor
 | 20.4 | A `SessionId` made on one thread is dropped on another | `session_id_drops_on_another_thread` (ASan, TSan) |
 | 20.5 | A callback's `&SessionId` still cannot be kept past the callback (it is QuickFIX's; keep a `clone()`) | `compile_fail` doctest on `ApplicationCallback` |
 
+Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
+with only the `NotSent` variant added so the tests compile):
+
+| Row | Behaviour | Test | Red before |
+|---|---|---|---|
+| 17.1 | A send to a configured session that is not logged on is `NotSent` | `send_to_target_is_not_sent_while_the_session_is_logged_off` | red (`Ok(())`) |
+| 17.2 | A send that `on_msg_to_app` refuses with `DoNotSend` is `NotSent`, and the peer gets nothing | `send_to_target_is_not_sent_when_on_msg_to_app_says_do_not_send` | red (`Ok(())`) |
+| 17.3 | A send on a logged-on session is `Ok` and reaches the peer (guard) | `send_to_target_is_ok_when_the_message_is_written` | green |
+| 17.4 | A send to a session no acceptor or initiator has is still `SessionNotFound` (guard) | `send_to_target_to_an_unknown_session_is_session_not_found` | green |
+
 Order reasoning: sanitizers first, because most P0s are only visible under them; the KRX suite
 next, so every later phase has KRX-shaped messages to test with; then the crashers and silent
 loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
@@ -161,8 +172,9 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 15 | `krx/golive-p15-api` | PR #20, merged | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
 | 16 | `krx/golive-p16` | PR #21, merged | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
 | 18 | `krx/golive-p18` | PR #22, merged | TSan job red and ignored (`continue-on-error`; 202 reports on `33b12daf`) → 0 reports on `11703b2a`, job blocking |
-| 19 | `krx/golive-p19` | PR open | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505) |
-| 20 | `krx/golive-p20` | PR open (on 19) | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
+| 19 | `krx/golive-p19` | PR #24, merged | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505); C++ pin `e1b1559e` (D21), TSan green |
+| 20 | `krx/golive-p20` | PR #25, merged | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
+| 17 | `krx/golive-p17` | PR open | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
 
 ## 6. Handover notes
 
@@ -669,3 +681,23 @@ is the TSan evidence; TSan runs only in CI (D3), where it now blocks (phase 18).
 type thread-safe without an allocation per send. Row 20.2's acceptor turns `CheckLatency` off,
 as `test_data_length` does, because the raw peer's Logon carries a fixed SendingTime.
 **Left for the owner:** none.
+
+### Handover 17 — 2026-11-13
+**Built:** R-P0-12 in Rust (D22): `FixSession_sendToTarget` returns C++'s `bool` (1 written, 0
+not); `send_to_target` maps 0 to the new `QuickFixError::NotSent` and documents its errors.
+Docs: CHANGELOG "Unreleased" → "Breaking changes", fork notes row 17, gateway handover sections
+2, 3 and 5, go-live plan R-P0-12 ticked.
+**Red → green:** `test_send_truth.rs`: 2 of 4 red (rows 17.1, 17.2 returned `Ok(())`; rows 17.3,
+17.4 guards green) → 4/4. The existing tests that send while sessions come and go
+(`test_lifecycle`, `test_reentry`, `test_soak`) count `is_ok()` and still pass: they now count
+writes, not attempts.
+**Checks:** macOS 191/0/2, ASan 191/0/2 (182 before + 4 tests + 5 doctests). `lint.sh .` exit 1
+as before, every failure pre-existing: vendored C++ (D5), missing memory-profile metadata,
+`quickfix-spec-parser` clippy, and the policy's `--all-features` test build needing MySQL; no
+finding in `session.rs`, `error.rs` or `test_send_truth.rs`.
+**Hook findings (D5):** `quickfix_bind.cpp` still reports the pre-existing whole-file formatting
+and `new`/`delete` findings; the changed lines follow the house style.
+**Decisions taken:** D22 (the owner's pick of the error over `Ok(false)`). Crate versions stay
+0.3.0 until a release is cut: the gateway pins `krx/main` by commit, and the bump to 0.4.0 belongs
+with the release.
+**Left for the owner:** when to cut 0.4.0.

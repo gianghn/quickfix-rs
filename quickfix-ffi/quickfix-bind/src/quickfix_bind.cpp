@@ -1146,10 +1146,8 @@ int8_t FixSession_sendToTarget(Message *msg, const SessionID *session_id) {
   RETURN_VAL_IF_NULL(msg, ERRNO_INVAL);
   RETURN_VAL_IF_NULL(session_id, ERRNO_INVAL);
 
-  CATCH_OR_RETURN_ERRNO({
-    Session::sendToTarget(*msg, *session_id);
-    return 0;
-  });
+  // KRX fork (R-P0-12): 1 when written now, 0 when not (stored for a resend, or DoNotSend).
+  CATCH_OR_RETURN_ERRNO({ return Session::sendToTarget(*msg, *session_id); });
 }
 
 FixSession_t *FixSession_lookup(const FixSessionID_t *session_id) {
