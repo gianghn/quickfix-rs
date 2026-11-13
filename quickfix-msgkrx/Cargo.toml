@@ -1,6 +1,6 @@
 [package]
 name = "quickfix-msgkrx"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Arthur LE MOIGNE", "Giang Nguyen"]
 edition = "2021"
 description = "FIX 4.4 messages for the KRX (HOSE/HNX) dictionary, generated from FIX44KRX.xml"
@@ -12,7 +12,7 @@ rust-version = "1.86.0"
 publish = false
 
 [dependencies]
-quickfix = { path = "../quickfix", version = "0.3.0" }
+quickfix = { path = "../quickfix", version = "0.4.0" }
 
 [build-dependencies]
-quickfix-msg-gen = { path = "../quickfix-msg-gen", version = "0.3.0" }
+quickfix-msg-gen = { path = "../quickfix-msg-gen", version = "0.4.0" }
