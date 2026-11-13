@@ -174,8 +174,7 @@ jobs:
   sanitizers:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    # TSan is report-only until the C++ pin fixes FIX::Mutex's racy recursion (KRX_BUILD_PLAN.md, D6).
-    continue-on-error: ${{ matrix.sanitizer == 'thread' }}
+    # Both block: TSan since the C++ pin fixed FIX::Mutex and SessionState (KRX_BUILD_PLAN.md, D18).
     strategy:
       fail-fast: false
       matrix:
@@ -202,8 +201,9 @@ jobs:
       - name: Tests under address sanitizer
         if: matrix.sanitizer == 'address'
         run: scripts/san.sh address
-      # Every race, not only the first, and a de-duplicated list in the job summary for triage.
-      - name: Tests under thread sanitizer (report-only)
+      # Every race, not only the first (a binary with any report still exits 66 and fails the
+      # step), and a de-duplicated list in the job summary for triage.
+      - name: Tests under thread sanitizer
         if: matrix.sanitizer == 'thread'
         env:
           TSAN_OPTIONS: halt_on_error=0:second_deadlock_stack=1
