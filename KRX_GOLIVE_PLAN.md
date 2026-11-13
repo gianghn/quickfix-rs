@@ -18,7 +18,12 @@ duplicates or reordering; 0 RustSec advisories). The failure paths are not: 13 P
 13 P0s, 5 of the 8 P1s and 3 of the 7 P2s ([x] below; details, tests and handovers in
 `KRX_BUILD_PLAN.md`). Still open in this repo: R-P0-13's regression test, the rest of R-P1-5 and
 the R-P1-7 chaos run. Waiting outside it: R-P0-11 (member spec), R-P0-12 and R-P0-13 (C++ fork),
-R-P2-3/4/5/6, Phase 0 (gateway) and Phase 4 (evidence). The CI TSan job is report-only (D6):
+R-P2-3/4/5/6, Phase 0 (gateway) and Phase 4 (evidence).
+
+**Update, 13 November 2026:** the C++ fork fixed R-P0-13, its half of R-P0-12 and the
+`FIX::Mutex`/`SessionState` races; phase 16 pins it (`11703b2a`), so 11 of 13 P0s are done.
+R-P0-12 needs phase 17 here (`send_to_target` must surface C++'s `false`); TSan becomes blocking
+in phase 18 (D18). The CI TSan job is report-only (D6):
 all 170 reports in its latest run have C++ frames on both sides (`FIX::Mutex`, `SessionState`
 flags and its `DateTime` last-sent/received times), none in the Rust layer.
 
@@ -104,7 +109,8 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       Where: `application.rs:83-87, 128-143`, `log_factory.rs:18-28`.
       Fix: `pub trait ApplicationCallback: Send + Sync`, same for `LogCallback` (breaking, and correct).
       Test: `compile_fail` doctest with a `Cell` member; TSan run with one app shared by two MultiThreaded sessions.
-- [ ] **R-P0-13 C++ data-length over-read (#779) kills the process with one raw Logon** (`95=100000000`).
+- [x] **R-P0-13 C++ data-length over-read (#779) kills the process with one raw Logon** (`95=100000000`).
+      Done: C++ fork P0-1, pinned in go-live phase 16 (`11703b2a`); all 20 data-length tests green under ASan.
       Fix: in the C++ fork (cherry-pick #779), then bump the submodule here.
       Test (this repo): integration test with 95 = 1e5 / 1e8 / 2e9 / -50 over raw TCP and through
       `DataDictionary::try_build_message`, acceptor and initiator, under ASan in CI: no crash.

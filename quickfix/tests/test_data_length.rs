@@ -2,11 +2,9 @@
 //! `95=<n>` and a one-byte `96` makes the parser read `n` bytes from where `96` starts, so one
 //! raw Logon kills the process.
 //!
-//! Red until the C++ fork cherry-picks #779 and the submodule is bumped (`KRX_BUILD_PLAN.md`, D4):
-//! the red tests are `#[ignore]`d and listed in `scripts/san-known-red.txt`. Expected once fixed:
-//! the message is refused, the session never logs on, the process lives. A negative length
-//! throws `std::length_error`: it kills a socket thread, but in process the binding's
-//! `catch (...)` turns it into an error, so that test is green already.
+//! Fixed by the C++ fork's P0-1 (#779, pinned in phase 16): an oversized or negative length, in
+//! any data field (95/96, 90/91 SecureData), is refused; the session never logs on and the
+//! process lives.
 
 use std::{
     io::{Read, Write},
@@ -132,67 +130,56 @@ fn data_dictionary_refuses_bytes(len: &'static [u8]) -> Result<(), QuickFixError
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn acceptor_refuses_logon_when_95_is_1e5() -> Result<(), QuickFixError> {
     acceptor_refuses_logon(b"100000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn acceptor_refuses_logon_when_95_is_1e8() -> Result<(), QuickFixError> {
     acceptor_refuses_logon(b"100000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn acceptor_refuses_logon_when_95_is_2e9() -> Result<(), QuickFixError> {
     acceptor_refuses_logon(b"2000000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn acceptor_refuses_logon_when_95_is_negative() -> Result<(), QuickFixError> {
     acceptor_refuses_logon(b"-50")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn initiator_refuses_logon_reply_when_95_is_1e5() -> Result<(), QuickFixError> {
     initiator_refuses_logon_reply(b"100000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn initiator_refuses_logon_reply_when_95_is_1e8() -> Result<(), QuickFixError> {
     initiator_refuses_logon_reply(b"100000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn initiator_refuses_logon_reply_when_95_is_2e9() -> Result<(), QuickFixError> {
     initiator_refuses_logon_reply(b"2000000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn initiator_refuses_logon_reply_when_95_is_negative() -> Result<(), QuickFixError> {
     initiator_refuses_logon_reply(b"-50")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_returns_error_when_95_is_1e5() -> Result<(), QuickFixError> {
     data_dictionary_refuses_message(b"100000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_returns_error_when_95_is_1e8() -> Result<(), QuickFixError> {
     data_dictionary_refuses_message(b"100000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_returns_error_when_95_is_2e9() -> Result<(), QuickFixError> {
     data_dictionary_refuses_message(b"2000000000")
 }
@@ -203,19 +190,16 @@ fn try_build_message_returns_error_when_95_is_negative() -> Result<(), QuickFixE
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_bytes_returns_error_when_95_is_1e5() -> Result<(), QuickFixError> {
     data_dictionary_refuses_bytes(b"100000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_bytes_returns_error_when_95_is_1e8() -> Result<(), QuickFixError> {
     data_dictionary_refuses_bytes(b"100000000")
 }
 
 #[test]
-#[ignore = "red until R-P0-13: C++ #779 cherry-pick + submodule bump"]
 fn try_build_message_bytes_returns_error_when_95_is_2e9() -> Result<(), QuickFixError> {
     data_dictionary_refuses_bytes(b"2000000000")
 }
@@ -223,4 +207,46 @@ fn try_build_message_bytes_returns_error_when_95_is_2e9() -> Result<(), QuickFix
 #[test]
 fn try_build_message_bytes_returns_error_when_95_is_negative() -> Result<(), QuickFixError> {
     data_dictionary_refuses_bytes(b"-50")
+}
+
+/// A Logon whose SecureData (91) is one byte but whose SecureDataLen (90) says `len`.
+fn logon_with_secure_data_length(len: &'static [u8]) -> Vec<u8> {
+    let mut fields = header(b"A", b"1");
+    fields.extend([(90, len), (91, &b"x"[..]), (98, b"0"), (108, b"30")]);
+    wire(&fields)
+}
+
+#[test]
+fn try_build_message_bytes_returns_error_when_90_is_1e5() -> Result<(), QuickFixError> {
+    let dd = DataDictionary::try_from_path(FIX44)?;
+    assert!(dd
+        .try_build_message_bytes(&logon_with_secure_data_length(b"100000"))
+        .is_err());
+    Ok(())
+}
+
+// Without a dictionary `QuickFIX` knows no data fields: 91 and 96 end at the next SOH, so the
+// length is never trusted.
+#[test]
+fn try_from_bytes_ends_91_at_soh_when_90_is_1e5() -> Result<(), QuickFixError> {
+    let msg = Message::try_from_bytes(&logon_with_secure_data_length(b"100000"))?;
+    assert_eq!(msg.get_field_bytes(91), Some(b"x".to_vec()));
+    Ok(())
+}
+
+#[test]
+fn try_from_bytes_ends_96_at_soh_when_95_is_1e5() -> Result<(), QuickFixError> {
+    let msg = Message::try_from_bytes(&logon_with_data_length(header(b"A", b"1"), b"100000"))?;
+    assert_eq!(msg.get_field_bytes(96), Some(b"x".to_vec()));
+    Ok(())
+}
+
+#[test]
+fn try_build_message_bytes_parses_a_zero_length_data_field() -> Result<(), QuickFixError> {
+    let dd = DataDictionary::try_from_path(FIX44)?;
+    let mut fields = header(b"A", b"1");
+    fields.extend([(98, &b"0"[..]), (108, b"30"), (95, b"0"), (96, b"")]);
+    let msg = dd.try_build_message_bytes(&wire(&fields))?;
+    assert_eq!(msg.get_field_bytes(96), Some(Vec::new()));
+    Ok(())
 }

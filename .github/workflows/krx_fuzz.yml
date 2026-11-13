@@ -1,8 +1,7 @@
 # Nightly libFuzzer run of the fuzz/ crate (go-live phase 14): each target for a bounded time,
 # C++ and Rust under ASan. A crash fails its job and uploads the input that caused it.
 #
-# R-P0-13 (QuickFIX trusts a data field's length) is open, so the targets skip inputs that only
-# rediscover it (feature skip-r-p0-13, fuzz/README.md); fuzz/known_crashes/ holds its inputs.
+# R-P0-13 is fixed in C++ (phase 16); its former crash inputs are seeds (fuzz/README.md).
 #
 # Actions are pinned by commit SHA (R-P1-6); the comment names the tag the SHA was taken from.
 name: KRX fuzz
