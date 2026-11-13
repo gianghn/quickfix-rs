@@ -21,6 +21,10 @@
   read past the buffer (R-P0-13); `Session::send` returns `Ok(false)` when the message was stored
   but not written; QuickFIX's mutex and session flags no longer race; new session settings
   `SendTimeout` and `FileStoreSync`.
+- `libquickfix` pinned at `e1b1559e` (go-live phase 19): an acceptor stopped right after it
+  started joins its accept threads (no race, no thread left running); a connection that closes
+  itself ends its session under the session lock; `on_logout` runs after QuickFIX releases the
+  session lock, so it may call back into the session.
 
 ## 0.3.0 (KRX fork, krx/main, not published to crates.io)
 

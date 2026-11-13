@@ -67,6 +67,7 @@ fix arrives, so CI stays green.
 | D18 | TSan gate after the bump (changes D6) | **Decided by the owner, 13 Nov 2026:** TSan becomes blocking (phase 18) once the pinned C++ leaves no reports, or only ones its phase 6 owns | phase 18 |
 | D19 | `SessionId` across threads (gateway request, 13 Nov 2026) | make it `Send + Sync` with two `unsafe impl`s and a written `SAFETY:` (not "document it"): `FIX::SessionID` changes only in `fromString`, which the binding does not expose; every bound call is `new`, `copy`, `delete` or a `const` getter, and `toString` returns the string frozen at construction. The alternative, a Rust-only `SessionId` of strings rebuilt in C++ per call, costs an allocation per send and changes every FFI signature | phase 20 |
 | D20 | Callback message for tests (gateway request, 13 Nov 2026) | `Message::as_message_mut(&mut self) -> MessageMut<'_>`, safe: the view borrows the message mutably and frees nothing (no `Drop`), as in a callback | phase 19 |
+| D21 | Teardown race found by the blocking TSan job (D18) | **Decided by the owner, 13 Nov 2026:** fixed in the C++ fork (its 6.5, P1-7, upstream #740: `Acceptor::stop` joins the start thread before `onStop`), not suppressed; phase 19 pins `krx/main` @ `e1b1559e`, which also brings 6.1/6.2 (a dropped connection ends its session under the lock) and 6.4 (`onLogout` after the session lock is released) | phase 19 |
 
 ## 4. Phases
 
@@ -646,7 +647,11 @@ outlives the message, E0505 message moved while viewed). Row 19.5: the three tes
 `scripts/san.sh address` (leak check on): clean.
 **Found on the way:** `ApplicationCallback`'s R-P0-3 `compile_fail` example typed the message
 `&mut Message`, so it failed on the signature, not on `mem::take`; now `&mut MessageMut<'_>`,
-failing with E0277 (no `Default`) as intended.
+failing with E0277 (no `Default`) as intended. The blocking TSan job (D18) failed on PR #24 in
+the `lib.rs` example, which starts an acceptor and stops it at once: a data race in
+`~ThreadedSocketAcceptor` and a thread never joined, because `Acceptor::stop` ran `onStop`
+before `onStart` had added the accept thread. Not phase 19's code and timing-dependent (phases
+16 and 18 passed); D21: fixed in the C++ fork (6.5) and pinned here at `e1b1559e`.
 **Left for the owner:** none.
 
 ### Handover 20 — 2026-11-13
