@@ -584,8 +584,11 @@ ASan container `scripts/san.sh address` 176/0/2, no skips; clippy `-D warnings` 
 `rust-policy-check fuzz` passes. `lint.sh --changed` fails only on findings outside this phase's
 files (upstream `#[allow]`s, `libquickfix/doc/html`, workspace policy metadata,
 `--all-features` needing MySQL), as on `krx/main`.
-**Measured:** TSan not measured locally: on aarch64 Docker the first TSan binary dies with
-SIGSEGV before any test (D3); CI's x86_64 TSan job gives the count for phase 18.
+**Measured:** TSan (CI, x86_64): **0 reports** on `11703b2a`, every test passing, against 202
+on `krx/main` before the bump. Locally on aarch64 Docker the first TSan binary dies with SIGSEGV
+before any test (D3). The CI TSan step itself failed on this PR's first run: on a cache miss
+`target/` did not exist, so `tee target/tsan.log` exited 1 under `pipefail`; fixed with
+`mkdir -p target`.
 **Decisions taken:** 16.5 corrected, not forced: without a dictionary QuickFIX treats no field as
 data, so `try_from_bytes` ends 91/96 at the next SOH (`Ok`, never an over-read) on both pins.
 `Session::send` may now return `Ok(false)` (C++ P0-6); no Rust test depended on the old answer.
