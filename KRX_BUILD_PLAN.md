@@ -65,6 +65,8 @@ fix arrives, so CI stays green.
 | D16 | Upstream (R-P2-4, R-P2-6) | **Decided by the owner, 12 Nov 2026:** this stays our fork only: no fast-forward of `main`, nothing sent upstream | — |
 | D17 | Taking the C++ fork's fixes (supersedes D11 for what is fixed there) | **Decided by the owner, 13 Nov 2026:** the C++ fork's own V1 plan (`gianghn/quickfix`, `docs/V1_PLAN.md`) fixed P0-1 (= R-P0-13), the `FIX::Mutex`/`SessionState` races (#772–#781), the plain acceptor's triple close (K-6) and send truth (P0-6, = R-P0-12 in C++); phase 16 pins `krx/main` @ `11703b2a`. BDD rows here are `cargo test` tests named after the behaviour (the C++ fork's feature-files plan: Gherkin only in the gateway) | phase 16 |
 | D18 | TSan gate after the bump (changes D6) | **Decided by the owner, 13 Nov 2026:** TSan becomes blocking (phase 18) once the pinned C++ leaves no reports, or only ones its phase 6 owns | phase 18 |
+| D19 | `SessionId` across threads (gateway request, 13 Nov 2026) | make it `Send + Sync` with two `unsafe impl`s and a written `SAFETY:` (not "document it"): `FIX::SessionID` changes only in `fromString`, which the binding does not expose; every bound call is `new`, `copy`, `delete` or a `const` getter, and `toString` returns the string frozen at construction. The alternative, a Rust-only `SessionId` of strings rebuilt in C++ per call, costs an allocation per send and changes every FFI signature | phase 20 |
+| D20 | Callback message for tests (gateway request, 13 Nov 2026) | `Message::as_message_mut(&mut self) -> MessageMut<'_>`, safe: the view borrows the message mutably and frees nothing (no `Drop`), as in a callback | phase 19 |
 
 ## 4. Phases
 
@@ -91,6 +93,8 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 16 C++ fixes pinned | D17: `libquickfix` → C++ fork `krx/main` @ `11703b2a`; R-P0-13 tests un-ignored, known-red list empty, fuzz `skip-r-p0-13` filter gone (its crashes become seeds); TSan counted on the new pin | H | on `33b12daf` 17 of 20 data-length rows red under ASan (checklist below) | all 20 green under ASan; known-red empty; fuzz finds nothing with the filter gone |
 | 17 Send truth to Rust | R-P0-12: `FixSession_sendToTarget` keeps C++'s `bool`; `send_to_target` errors when the message is stored but not sent | M | a send while disconnected returns `Ok` | it returns the not-sent error |
 | 18 TSan blocking | D18: remove `continue-on-error` from the TSan job | L | TSan job red but ignored | job blocking and green |
+| 19 Callback message for tests | D20: a public way to build the `MessageMut` that `on_msg_to_admin`/`on_msg_to_app` take from an owned `Message`, so the gateway unit-tests its callbacks directly (its trial build moved the logic into helper methods instead) | M | the checklist's tests do not compile (no constructor) | rows 19.1–19.5 green, ASan clean |
+| 20 `SessionId: Send + Sync` | D19: the gateway can keep a `SessionId` in its `Send + Sync` app (its trial build stores the session as text) | H | a `Send + Sync` assertion on `SessionId` does not compile | rows 20.1–20.5 green under ASan and the blocking TSan job |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -103,6 +107,31 @@ Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf
 | 16.5 | Without a dictionary no field is a data field: 91 and 96 end at the next SOH | `try_from_bytes_ends_{91,96}_at_soh_*` (2) | 2 by expectation (written as "refused"; the old and new pin both return `Ok`, never over-read; corrected) |
 | 16.6 | A zero-length data field still parses (guard for the bounds check) | `try_build_message_bytes_parses_a_zero_length_data_field` | 0 (guard) |
 | 16.7 | The four former fuzz crashes are refused by a dictionary and do not crash without one | `fuzz`: `former_r_p0_13_crashes_are_refused_by_the_dictionary` | — (seeds replayed by every fuzz run) |
+
+Phases 19 and 20 come from the gateway team (13 Nov 2026), needed before or with its F2. Both
+are additive (no breaking change; CHANGELOG "Unreleased", "Added"), independent of each other
+and of phase 17, and each is one PR on top of phase 18.
+
+Phase 19 BDD checklist (`quickfix/tests/test_callback_message.rs` and doctests on
+`Message::as_message_mut`; red = before the constructor exists):
+
+| Row | Behaviour | Test |
+|---|---|---|
+| 19.1 | A test calls `on_msg_to_app` with a message it built; the fields the callback set are on the message after the call | `on_msg_to_app_changes_reach_the_owned_message` |
+| 19.2 | The same for `on_msg_to_admin`, header fields included (`with_header_mut`) | `on_msg_to_admin_header_changes_reach_the_owned_message` |
+| 19.3 | A callback's `Err(MsgToAppError::DoNotSend)` reaches the test unchanged | `on_msg_to_app_do_not_send_reaches_the_test` |
+| 19.4 | The view cannot outlive its message, and the message cannot be used while the view lives | two `compile_fail` doctests |
+| 19.5 | Build the view, change header, body and a group through it, drop the view, drop the message: nothing freed twice | the 19.1–19.3 tests under ASan |
+
+Phase 20 BDD checklist (`quickfix/tests/test_session_id_threads.rs`; red = before the impls):
+
+| Row | Behaviour | Test |
+|---|---|---|
+| 20.1 | `SessionId` is `Send + Sync` | a compile-time assertion (`fn assert_send_sync<T: Send + Sync>()`) |
+| 20.2 | A `SessionId` cloned in `on_logon` and kept in a `Mutex` inside the app is used from another thread to `send_to_target`; the peer receives the message | `session_id_kept_in_the_app_sends_from_another_thread` |
+| 20.3 | Eight threads read the getters, `to_repr` and `clone` of one `Arc<SessionId>` at once: same answers, no race | `session_id_shared_by_threads_reads_the_same` (TSan job) |
+| 20.4 | A `SessionId` made on one thread is dropped on another | `session_id_drops_on_another_thread` (ASan, TSan) |
+| 20.5 | A callback's `&SessionId` still cannot be kept past the callback (it is QuickFIX's; keep a `clone()`) | `compile_fail` doctest on `ApplicationCallback` |
 
 Order reasoning: sanitizers first, because most P0s are only visible under them; the KRX suite
 next, so every later phase has KRX-shaped messages to test with; then the crashers and silent
