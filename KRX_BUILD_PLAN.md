@@ -162,6 +162,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 16 | `krx/golive-p16` | PR #21, merged | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
 | 18 | `krx/golive-p18` | PR #22, merged | TSan job red and ignored (`continue-on-error`; 202 reports on `33b12daf`) → 0 reports on `11703b2a`, job blocking |
 | 19 | `krx/golive-p19` | PR open | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505) |
+| 20 | `krx/golive-p20` | PR open (on 19) | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
 
 ## 6. Handover notes
 
@@ -651,4 +652,20 @@ the `lib.rs` example, which starts an acceptor and stops it at once: a data race
 `~ThreadedSocketAcceptor` and a thread never joined, because `Acceptor::stop` ran `onStop`
 before `onStart` had added the accept thread. Not phase 19's code and timing-dependent (phases
 16 and 18 passed); D21: fixed in the C++ fork (6.5) and pinned here at `e1b1559e`.
+**Left for the owner:** none.
+
+### Handover 20 — 2026-11-13
+**Built:** D19: `unsafe impl Send` and `Sync` for `SessionId`, each with its `SAFETY:` (the
+binding exposes no call that writes a `FIX::SessionID` after construction; `fromString` is not
+bound); the type's docs say so, and `ApplicationCallback`'s docs say to keep a `clone()`, with a
+`compile_fail` doctest for keeping the reference (row 20.5, E0521). Docs: CHANGELOG "Added", fork
+notes row 20, gateway handover section 2.
+**Red → green:** `test_session_id_threads.rs` rows 20.1–20.4: 4 → 0 (red: 7 × E0277,
+`NonNull<c_void>` cannot be sent / shared). Green 5 runs of 5 on macOS; the four plus phase 19's
+three under `scripts/san.sh address`: clean. Row 20.3 (8 threads reading one `Arc<SessionId>`)
+is the TSan evidence; TSan runs only in CI (D3), where it now blocks (phase 18).
+**Decisions taken:** the owner approved the two `unsafe impl`s (13 Nov 2026): the policy's "no
+`unsafe` in production code" meets an FFI binding; they are the only way to make the C++-backed
+type thread-safe without an allocation per send. Row 20.2's acceptor turns `CheckLatency` off,
+as `test_data_length` does, because the raw peer's Logon carries a fixed SendingTime.
 **Left for the owner:** none.
