@@ -9,6 +9,14 @@
   longer refused or cut; the parsed message serializes back byte-exact. C:
   `FixMessage_fromBytes(data, len)` and `FixMessage_fromBytesAndDictionary` (go-live phase 15).
 
+### Changed
+
+- `libquickfix` pinned at the C++ fork's `krx/main` @ `11703b2a` (go-live phase 16). A data
+  length that runs past the frame or is negative, in any data field, is now refused instead of
+  read past the buffer (R-P0-13); `Session::send` returns `Ok(false)` when the message was stored
+  but not written; QuickFIX's mutex and session flags no longer race; new session settings
+  `SendTimeout` and `FileStoreSync`.
+
 ## 0.3.0 (KRX fork, krx/main, not published to crates.io)
 
 ### Breaking changes

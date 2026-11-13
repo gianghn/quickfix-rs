@@ -17,12 +17,6 @@ memory-profile = "allocation-conscious"
 libfuzzer-sys = "0.4.13"
 quickfix = { path = "../quickfix", default-features = false }
 
-[features]
-# R-P0-13 (95=<n> over-read in C++) is open: skip inputs that would only rediscover it, so a
-# nightly run looks for new bugs. Remove the feature once the C++ fix is pinned.
-default = ["skip-r-p0-13"]
-skip-r-p0-13 = []
-
 [[bin]]
 name = "parse_no_dict"
 path = "fuzz_targets/parse_no_dict.rs"

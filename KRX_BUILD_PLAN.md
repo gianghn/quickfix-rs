@@ -63,6 +63,8 @@ fix arrives, so CI stays green.
 | D14 | Gateway work | **Decided by the owner, 12 Nov 2026:** done by the gateway team from `KRX_GATEWAY_HANDOVER.md`, not in this repo | — |
 | D15 | msgkrx licence; SharePoint link | **Decided by the owner, 12 Nov 2026:** licence stays `MIT OR Apache-1.1`. The repo is a public fork: history is not rewritten; the owner revokes the old SharePoint link | — |
 | D16 | Upstream (R-P2-4, R-P2-6) | **Decided by the owner, 12 Nov 2026:** this stays our fork only: no fast-forward of `main`, nothing sent upstream | — |
+| D17 | Taking the C++ fork's fixes (supersedes D11 for what is fixed there) | **Decided by the owner, 13 Nov 2026:** the C++ fork's own V1 plan (`gianghn/quickfix`, `docs/V1_PLAN.md`) fixed P0-1 (= R-P0-13), the `FIX::Mutex`/`SessionState` races (#772–#781), the plain acceptor's triple close (K-6) and send truth (P0-6, = R-P0-12 in C++); phase 16 pins `krx/main` @ `11703b2a`. BDD rows here are `cargo test` tests named after the behaviour (the C++ fork's feature-files plan: Gherkin only in the gateway) | phase 16 |
+| D18 | TSan gate after the bump (changes D6) | **Decided by the owner, 13 Nov 2026:** TSan becomes blocking (phase 18) once the pinned C++ leaves no reports, or only ones its phase 6 owns | phase 18 |
 
 ## 4. Phases
 
@@ -86,6 +88,21 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 13 Rocky Linux 9 | D12: CI job in a pinned `rockylinux/rockylinux:9` container: tests, hardening and reproducibility checks | L | `ar` not deterministic on Rocky without phase 12's flags | job green |
 | 14 Fuzzing | D13: `fuzz/` crate outside the workspace, C++ instrumented, nightly workflow | M | the old fuzzer never finds the R-P0-13 over-read | the new one finds it; nightly green with the known crash filtered |
 | 15 Byte-level parse API | `Message::try_from_bytes`, `DataDictionary::try_build_message_bytes` over `FixMessage_fromBytes(ptr, len)`; fuzz targets switch to it (handover 14, decision 1) | M | non-UTF-8 and embedded-NUL frames cannot be parsed from Rust | they parse byte-exact; fuzz targets drop the UTF-8 skip |
+| 16 C++ fixes pinned | D17: `libquickfix` → C++ fork `krx/main` @ `11703b2a`; R-P0-13 tests un-ignored, known-red list empty, fuzz `skip-r-p0-13` filter gone (its crashes become seeds); TSan counted on the new pin | H | on `33b12daf` 17 of 20 data-length rows red under ASan (checklist below) | all 20 green under ASan; known-red empty; fuzz finds nothing with the filter gone |
+| 17 Send truth to Rust | R-P0-12: `FixSession_sendToTarget` keeps C++'s `bool`; `send_to_target` errors when the message is stored but not sent | M | a send while disconnected returns `Ok` | it returns the not-sent error |
+| 18 TSan blocking | D18: remove `continue-on-error` from the TSan job | L | TSan job red but ignored | job blocking and green |
+
+Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
+
+| Row | Behaviour | Tests | Red on old pin |
+|---|---|---|---|
+| 16.1 | An acceptor refuses a Logon whose 95 is 1e5, 1e8, 2e9 or -50 and keeps serving | `acceptor_refuses_logon_when_95_is_*` (4) | 4 (3 heap over-reads, 1 `std::length_error` abort) |
+| 16.2 | An initiator refuses such a Logon reply and stays logged off | `initiator_refuses_logon_reply_when_95_is_*` (4) | 4 (same) |
+| 16.3 | A dictionary refuses such a frame, text or bytes | `try_build_message{,_bytes}_returns_error_when_95_is_*` (8) | 6 (the two -50 rows were already green in process) |
+| 16.4 | SecureData (90/91), the field the fuzzer crashed on, is refused like 95/96 | `try_build_message_bytes_returns_error_when_90_is_1e5` | 1 |
+| 16.5 | Without a dictionary no field is a data field: 91 and 96 end at the next SOH | `try_from_bytes_ends_{91,96}_at_soh_*` (2) | 2 by expectation (written as "refused"; the old and new pin both return `Ok`, never over-read; corrected) |
+| 16.6 | A zero-length data field still parses (guard for the bounds check) | `try_build_message_bytes_parses_a_zero_length_data_field` | 0 (guard) |
+| 16.7 | The four former fuzz crashes are refused by a dictionary and do not crash without one | `fuzz`: `former_r_p0_13_crashes_are_refused_by_the_dictionary` | — (seeds replayed by every fuzz run) |
 
 Order reasoning: sanitizers first, because most P0s are only visible under them; the KRX suite
 next, so every later phase has KRX-shaped messages to test with; then the crashers and silent
@@ -111,7 +128,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 12 | `krx/golive-p12` | PR #15, merged | macOS archives differ (Linux already identical), release binary has no debug info to split, policy clippy on go-live lines 90 → identical on both, 1.47 MB binary + 32.7 MB `.debug`, 30 (29 `unsafe_code`, 1 kept `unnecessary_wraps`) |
 | 13 | `krx/golive-p13` | PR #18, merged | Rocky `ar` without `D` → archives differ; with phase 12's flags identical; tests 150/0/13 |
 | 14 | `krx/golive-p14` | PR #19, merged | old fuzzer 0 crashes in 65.4 M inputs (88 edges) → C++ instrumented: over-read in 1.27 M inputs, ~105 s (1 099 edges) |
-| 15 | `krx/golive-p15-api` | PR open | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
+| 15 | `krx/golive-p15-api` | PR #20, merged | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
+| 16 | `krx/golive-p16` | PR open | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
 
 ## 6. Handover notes
 
@@ -551,3 +569,27 @@ byte tests (1e5, 1e8, 2e9) are red under ASan as R-P0-13, `#[ignore]` and in
 crashes (≈ 295–346 k runs each). `rust-policy-check fuzz` passes, lint `--changed` exit 0.
 **Left for the owner:** none new; the R-P0-13 C++ fix must also cover negative lengths and
 90/91.
+
+### Handover 16 — 2026-11-13
+**Built:** D17: `libquickfix` → C++ fork `krx/main` @ `11703b2a` (114 commits: its V1 phases
+1–5). 14 R-P0-13 tests un-ignored, `scripts/san-known-red.txt` empty, 4 new rows (16.4–16.6);
+`fuzz/`: `skip-r-p0-13` and `overreads_data_field` deleted, `known_crashes/` moved into `seeds/`,
+one test that a dictionary refuses them. Docs: fork notes (pin, phase 16 row), go-live plan
+(R-P0-13 ticked, 11 of 13 P0), gateway handover (risk table, new `.ini` settings), CHANGELOG.
+**Red → green:** 17 → 0 of 20 rows under ASan, each test run on its own (old pin: 14 heap
+over-reads, 2 `std::length_error` aborts, 2 wrong expectations; checklist 16.1–16.6).
+**Checks:** macOS `cargo test --workspace` 176 passed / 0 failed / 2 ignored (was 158/0/16);
+ASan container `scripts/san.sh address` 176/0/2, no skips; clippy `-D warnings` and fmt clean
+(workspace and `fuzz/`); fuzz 4 targets × 60 s without the filter: 782 k–965 k runs, 0 crashes;
+`rust-policy-check fuzz` passes. `lint.sh --changed` fails only on findings outside this phase's
+files (upstream `#[allow]`s, `libquickfix/doc/html`, workspace policy metadata,
+`--all-features` needing MySQL), as on `krx/main`.
+**Measured:** TSan (CI, x86_64): **0 reports** on `11703b2a`, every test passing, against 202
+on `krx/main` before the bump. Locally on aarch64 Docker the first TSan binary dies with SIGSEGV
+before any test (D3). The CI TSan step itself failed on this PR's first run: on a cache miss
+`target/` did not exist, so `tee target/tsan.log` exited 1 under `pipefail`; fixed with
+`mkdir -p target`.
+**Decisions taken:** 16.5 corrected, not forced: without a dictionary QuickFIX treats no field as
+data, so `try_from_bytes` ends 91/96 at the next SOH (`Ok`, never an over-read) on both pins.
+`Session::send` may now return `Ok(false)` (C++ P0-6); no Rust test depended on the old answer.
+**Left for the owner:** phase 17 (R-P0-12 API), phase 18 once CI's TSan count is in.

@@ -49,6 +49,9 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 - [ ] Production `.ini`, versioned in the gateway, with a test that loads it through
       `SessionSettings::try_from_path`: `PersistMessages=Y`, `ResetOn*=N`, `SocketNodelay=Y`,
       `TimestampPrecision`, `HeartBtInt`, `CheckLatency`/`MaxLatency` per the KRX spec (R-P1-8).
+      From phase 16 (C++ fork settings): `FileStoreSync=Y` (store forced to disk per sent
+      message), `SendTimeout` (default half of HeartBtInt), `ReconnectInterval` 1–2 s so the
+      initiator reaches `SocketConnectHost1` within 5 s.
 - [ ] Dictionary (R-P0-11): confirm which XML is loaded as `DataDictionary=`; set
       `AllowUnknownMsgFields=Y`, `ValidateUserDefinedFields=N`, `ValidateFieldsOutOfOrder=N`;
       alert on every outbound 35=3 and 35=j. FIX44KRX.xml is not yet checked against the member
@@ -68,9 +71,9 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 
 | Risk | What happens | Gateway mitigation |
 |---|---|---|
-| R-P0-13 data-length over-read (QuickFIX #779) | one message with a huge or negative 95/96 length crashes the process, before logon, on the acceptor and the initiator side | expose no acceptor to untrusted networks; the exchange link is trusted but not immune; supervisor restart and alert on abort |
-| R-P0-12 send while down | `Ok` returned, sent later as PossDup | the logged-on check and stale-resend `DoNotSend` above |
-| C++ data races (`FIX::Mutex`, `SessionState` flags and times) | rare, timing-dependent misbehaviour under load | none in the gateway; tracked for the C++ fork |
+| ~~R-P0-13 data-length over-read~~ | fixed in the C++ fork, pinned in phase 16 (`11703b2a`): the message is refused | none needed; take a `krx/main` commit at or after phase 16 |
+| R-P0-12 send while down | `send_to_target` returns `Ok`, sent later as PossDup (C++ now reports it; Rust surfaces it in phase 17) | the logged-on check and stale-resend `DoNotSend` above |
+| C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16); teardown races remain on the C++ fork's phase 6 | stop and join senders before `stop()` (section 3) |
 
 ## 6. Done when
 

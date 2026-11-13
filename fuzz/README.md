@@ -30,22 +30,15 @@ under `artifacts/<target>/`. Replay one with
 On macOS, use a Linux container (`KRX_BUILD_PLAN.md`, handovers 1 and 11).
 
 - `seeds/`: 95 research-corpus frames (FIX 4.0–4.4, FIXT1.1), merged down from 3431 by libFuzzer
-  `-merge=1` over the four targets, and 3 frames with data fields (`data-*`, `95=1|96=x`,
-  `354=2|355=de`).
+  `-merge=1` over the four targets, 3 frames with data fields (`data-*`, `95=1|96=x`,
+  `354=2|355=de`), and the 4 `r-p0-13-*` frames below.
 - `fix.dict`: separators, header tags, every data/length tag pair, group counters and edge values.
 
-## R-P0-13 and the `skip-r-p0-13` feature
+## R-P0-13
 
-QuickFIX trusts a data field's length tag (`95=100000|96=x` reads 100000 bytes; upstream #779).
-That bug is open, so a nightly run would stop at it every time and find nothing else. The
-default feature `skip-r-p0-13` skips inputs where a length field promises more bytes than follow
-it. `known_crashes/` holds four frames that crash today: three hand-made `95=` Logons and the
-first one the fuzzer found by itself (`90=6`/`91=`, SecureData), all checked by the crate's
-`overreads_data_field_returns_true_for_every_known_crash` test. To see them crash, turn the filter off:
-
-```sh
-scripts/fuzz.sh run parse_fix44 --no-default-features known_crashes/r-p0-13-95-100000
-```
-
-Once the C++ fix is pinned, delete the feature and `overreads_data_field`, and move
-`known_crashes/` into `seeds/`.
+QuickFIX trusted a data field's length tag (`95=100000|96=x` read 100000 bytes; upstream #779)
+until the C++ fork's P0-1 fix, pinned in phase 16. The `r-p0-13-*` seeds are the frames that
+crashed it: three hand-made `95=` Logons and the first one this fuzzer found by itself
+(`90=6`/`91=`, SecureData). Every run replays them first, and the crate's
+`former_r_p0_13_crashes_are_refused_by_the_dictionary` test checks a dictionary refuses them
+(without one, QuickFIX knows no data fields and ends each value at the next SOH).
