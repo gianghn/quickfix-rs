@@ -22,10 +22,10 @@ R-P2-3/4/5/6, Phase 0 (gateway) and Phase 4 (evidence).
 
 **Update, 13 November 2026:** the C++ fork fixed R-P0-13, its half of R-P0-12 and the
 `FIX::Mutex`/`SessionState` races; phase 16 pins it (`11703b2a`), so 11 of 13 P0s are done.
-R-P0-12 needs phase 17 here (`send_to_target` must surface C++'s `false`); TSan becomes blocking
-in phase 18 (D18). The CI TSan job is report-only (D6):
-all 170 reports in its latest run have C++ frames on both sides (`FIX::Mutex`, `SessionState`
-flags and its `DateTime` last-sent/received times), none in the Rust layer.
+R-P0-12 needs phase 17 here (`send_to_target` must surface C++'s `false`). The CI TSan job was
+report-only (D6) while every report (202 in the last run) had C++ frames on both sides
+(`FIX::Mutex`, `SessionState` flags and times); on the new pin it reports 0, and phase 18 makes
+it blocking (D18).
 
 ## How the work is split
 

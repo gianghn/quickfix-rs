@@ -130,6 +130,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 14 | `krx/golive-p14` | PR #19, merged | old fuzzer 0 crashes in 65.4 M inputs (88 edges) → C++ instrumented: over-read in 1.27 M inputs, ~105 s (1 099 edges) |
 | 15 | `krx/golive-p15-api` | PR #20, merged | tests do not compile without the API → macOS 158/0/16, ASan 158/0/2; fuzz 4 × 60 s via bytes, 0 crashes |
 | 16 | `krx/golive-p16` | PR open | 17 of 20 data-length rows red under ASan on `33b12daf` → 20/20 on `11703b2a`; macOS 176/0/2, ASan 176/0/2 with no known-red; fuzz 4 × 60 s without the filter, 0 crashes |
+| 18 | `krx/golive-p18` | PR open (on 16) | TSan job red and ignored (`continue-on-error`; 202 reports on `33b12daf`) → 0 reports on `11703b2a`, job blocking |
 
 ## 6. Handover notes
 
@@ -593,3 +594,12 @@ before any test (D3). The CI TSan step itself failed on this PR's first run: on 
 data, so `try_from_bytes` ends 91/96 at the next SOH (`Ok`, never an over-read) on both pins.
 `Session::send` may now return `Ok(false)` (C++ P0-6); no Rust test depended on the old answer.
 **Left for the owner:** phase 17 (R-P0-12 API), phase 18 once CI's TSan count is in.
+
+### Handover 18 — 2026-11-13
+Built before phase 17, which waits for the owner's API choice. **Built:** D18: the sanitizer
+job's `continue-on-error` for TSan is gone, so a race fails CI; the step keeps
+`halt_on_error=0` (every race reported; a binary with any report exits 66 and fails the step)
+and its job-summary list. **Red → green:** TSan job red but ignored (202 reports on
+`33b12daf`; `krx/main`'s last run "11 targets failed") → 0 reports, all 59 test binaries ok on
+`11703b2a` (phase 16's CI run). **Left for the owner:** a race the C++ fork's phase 6 (teardown)
+still owns would now fail CI; fix it there, never with a suppression.
