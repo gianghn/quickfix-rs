@@ -62,7 +62,7 @@ private:
   void onStart() override {}
   bool onPoll() override { return false; }
   void onStop() override {}
-  void doConnect(const FIX::SessionID &session, const FIX::Dictionary &dict) override {}
+  void doConnect(const FIX::SessionID & /*session*/, const FIX::Dictionary & /*dict*/) override {}
 };
 
 namespace FIX {
@@ -133,7 +133,9 @@ std::string &lastErrorText() {
 
 void Fix_setLastErrorText(const char *text, int8_t code) {
   lastErrorText() = text;
-  lastError() = LastError{code, true};
+  LastError &state = lastError();
+  state.code = code;
+  state.hasText = true;
 }
 
 void Fix_setLastError(const std::exception &ex, int8_t code) { Fix_setLastErrorText(ex.what(), code); }
@@ -546,7 +548,7 @@ int64_t FixDictionary_getStringLen(const Dictionary *obj, const char *key) {
   RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
   RETURN_VAL_IF_NULL(key, ERRNO_INVAL);
 
-  CATCH_OR_RETURN_ERRNO({ return obj->getString(key).size() + 1; })
+  CATCH_OR_RETURN_ERRNO({ return static_cast<int64_t>(obj->getString(key).size() + 1); })
 }
 
 int8_t FixDictionary_readString(const Dictionary *obj, const char *key, char *buffer, uint64_t buffer_len) {
@@ -949,7 +951,7 @@ int8_t FixMessage_addGroup(Message *obj, const Group *group) {
 int64_t FixMessage_getStringLen(const FixMessage_t *obj) {
   RETURN_VAL_IF_NULL(obj, ERRNO_INVAL);
 
-  CATCH_OR_RETURN_ERRNO({ return obj->toString().size() + 1; });
+  CATCH_OR_RETURN_ERRNO({ return static_cast<int64_t>(obj->toString().size() + 1); });
 }
 
 int8_t FixMessage_readString(const FixMessage_t *obj, char *buffer, uint64_t buffer_len) {
@@ -1201,8 +1203,8 @@ int64_t FixSession_sendToTargetBatch(Message *const *msgs, size_t len, const Ses
       RETURN_VAL_IF_NULL(msgs[i], ERRNO_INVAL);
       batch.push_back(*msgs[i]);
     }
-    const int64_t sent = Session::sendToTarget(batch, *session_id);
-    return sent;
+    // At most len, which came in as a size_t from a Rust slice, so it fits.
+    return static_cast<int64_t>(Session::sendToTarget(batch, *session_id));
   });
 }
 

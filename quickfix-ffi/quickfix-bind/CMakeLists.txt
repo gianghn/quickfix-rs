@@ -4,6 +4,10 @@ include_directories(include)
 add_library(quickfixbind STATIC
     src/quickfix_bind.cpp
 )
+# KRX fork: house warnings and -Werror under the C++ policy (HouseFlags.cmake), nothing in cargo builds.
+if (COMMAND house_target)
+    house_target(quickfixbind)
+endif()
 target_link_libraries(quickfixbind ${MYSQL_CLIENT_LIBS} ${PostgreSQL_LIBRARIES} ${OPENSSL_LIBRARIES})
 
 if (WIN32)
