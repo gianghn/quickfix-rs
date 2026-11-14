@@ -229,6 +229,7 @@ int8_t FixGroup_addGroup(FixGroup_t *obj, const FixGroup_t *group);
 void FixGroup_delete(const FixGroup_t *obj);
 
 int8_t FixSession_sendToTarget(FixMessage_t *msg, const FixSessionID_t *session_id);
+int64_t FixSession_sendToTargetBatch(FixMessage_t *const *msgs, size_t len, const FixSessionID_t *session_id);
 FixSession_t *FixSession_lookup(const FixSessionID_t *session_id);
 int8_t FixSession_logout(FixSession_t *session);
 int8_t FixSession_isLoggedOn(FixSession_t *session);

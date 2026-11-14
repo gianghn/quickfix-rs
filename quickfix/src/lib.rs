@@ -145,7 +145,7 @@ pub use message_store_factory::{
     FfiMessageStoreFactory, FileMessageStoreFactory, MemoryMessageStoreFactory,
     NullMessageStoreFactory,
 };
-pub use session::{send_to_target, Session};
+pub use session::{send_batch_to_target, send_to_target, Session};
 pub use session_id::SessionId;
 pub use session_settings::SessionSettings;
 pub use trailer::Trailer;

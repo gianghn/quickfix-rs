@@ -2,6 +2,13 @@
 
 ## Unreleased (KRX fork, krx/main)
 
+### Added
+
+- `send_batch_to_target(&[Message], &SessionId) -> Result<usize, QuickFixError>` sends a batch
+  under one session lock with one store sync (`FileStoreSync=Y`), in order; it returns how many
+  went out from the first, so `messages[n..]` were not sent. C: `FixSession_sendToTargetBatch`
+  (go-live phase 21b).
+
 ### Changed
 
 - `libquickfix` pinned at the C++ fork's `krx/main` @ `fc866418` (go-live phase 21a). New
