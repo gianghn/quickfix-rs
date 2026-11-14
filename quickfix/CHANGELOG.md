@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (KRX fork, krx/main)
+## 0.4.2 (KRX fork, krx/main, not published to crates.io)
 
 ### Changed
 

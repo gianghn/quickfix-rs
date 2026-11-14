@@ -233,9 +233,9 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 17 | `krx/golive-p17` | PR #26, merged; version 0.4.0 (D22) | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
 | 21a | `krx/golive-p21a` | PR #28, merged; version 0.4.1 | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
 | 21b | `krx/golive-p21b` | PR #29, merged; version 0.4.1 | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
-| 22 | `krx/golive-p22` | PR open | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
-| 23 | `krx/golive-p23` (on p22) | PR open | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
-| 24 | `krx/golive-p24` (on p23) | PR open | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
+| 22 | `krx/golive-p22` | PR #32, merged; version 0.4.2 | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
+| 23 | `krx/golive-p23` | PR #33, merged; version 0.4.2 | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
+| 24 | `krx/golive-p24` | PR #34, merged; version 0.4.2 | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
 
 ## 6. Handover notes
 
