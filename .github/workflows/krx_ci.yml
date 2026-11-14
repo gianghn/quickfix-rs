@@ -55,6 +55,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # fuzz/ is its own workspace: a version bump leaves its Cargo.lock behind, and only the nightly
+      # KRX fuzz run would notice. Resolving with --locked catches it on the PR, without a build.
+      - name: fuzz/Cargo.lock is current
+        run: cargo metadata --locked --format-version 1 --manifest-path fuzz/Cargo.toml > /dev/null
 
   # Every crate declares rust-version = 1.86.0.
   msrv:
