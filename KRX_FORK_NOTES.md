@@ -36,7 +36,7 @@ in the rebase on 0.2.2:
 | cba08af rust fmt | dropped | Formatting of code replaced above. |
 | f7982ea `Session::set_next_{sender,target}_msg_seq_num` | **kept** | Gateway operator commands (`src/port_fix/control.rs`). Not upstream. |
 | b2c8b29 `Session::get_expected_{sender,target}_num` + tests | **kept** | Same. Not upstream. |
-| 9b395d2 `quickfix-msgkrx` crate (FIX44KRX.xml) | **kept** | The KRX dictionary the gateway uses. Now version 0.4.0 with the workspace, `publish = false`. |
+| 9b395d2 `quickfix-msgkrx` crate (FIX44KRX.xml) | **kept** | The KRX dictionary the gateway uses. Now version 0.4.1 with the workspace, `publish = false`. |
 | 36098d7 `Message::get_fix_message_t` | **kept** | Gateway converter. Not upstream. |
 | f198bed `Message::from_fix_message_t` | **kept** | Same. Not upstream. |
 | 00132e0 `Message::to_fix_bytes` | **kept, thin wrapper** | Upstream added `to_fix_raw_bytes` (dc3d581), same two C++ calls, but it keeps the trailing NUL. The gateway's message path calls `to_fix_bytes` and wants no NUL, so `to_fix_bytes` now only pops that NUL. |
