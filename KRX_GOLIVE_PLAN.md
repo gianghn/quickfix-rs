@@ -28,7 +28,8 @@ report-only (D6) while every report (202 in the last run) had C++ frames on both
 it blocking (D18). Later the same day phase 17 closed R-P0-12 on the Rust side
 (`QuickFixError::NotSent`), so 12 of 13 P0s are done; R-P0-11 waits on the member spec.
 
-**Update, 14 November 2026:** 0.4.0 released (PR #27). Phase 21a pins the C++ fork at
+**Update, 14 November 2026:** 0.4.0 released (PR #27); 0.4.1 adds phases 21a and 21b (batch
+send, `send_batch_to_target`). Phase 21a pins the C++ fork at
 `fc866418`: background store flush (`FileStoreFlushInterval`, production setting per D23),
 `MaxQueuedMessages`, and the C++ fork's phase 7 picks and phase 8 gap and resend fixes. R-P1-5
 was finished by build phases 10, 12 and 13 and R-P2-5 is superseded by the pins, so 12/13 P0,

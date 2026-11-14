@@ -201,8 +201,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 19 | `krx/golive-p19` | PR #24, merged | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505); C++ pin `e1b1559e` (D21), TSan green |
 | 20 | `krx/golive-p20` | PR #25, merged | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
 | 17 | `krx/golive-p17` | PR #26, merged; version 0.4.0 (D22) | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
-| 21a | `krx/golive-p21a` | PR open | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
-| 21b | `krx/golive-p21b` | PR open (on 21a) | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
+| 21a | `krx/golive-p21a` | PR #28, merged; version 0.4.1 | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
+| 21b | `krx/golive-p21b` | PR #29, merged; version 0.4.1 | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
 
 ## 6. Handover notes
 
