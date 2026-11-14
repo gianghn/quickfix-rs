@@ -202,6 +202,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 20 | `krx/golive-p20` | PR #25, merged | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
 | 17 | `krx/golive-p17` | PR #26, merged; version 0.4.0 (D22) | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
 | 21a | `krx/golive-p21a` | PR open | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
+| 21b | `krx/golive-p21b` | PR open (on 21a) | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
 
 ## 6. Handover notes
 
@@ -752,3 +753,28 @@ typed `dictionary_item`s for the two new settings: they are set in the `.ini` (o
 `Dictionary::set`), like `FileStoreSync`.
 **Left for the owner:** the gateway tries `FileStoreSync=N` + `FileStoreFlushInterval=5` on this
 branch's commit; 21b (batch send) next.
+
+### Handover 21b — 2026-11-14
+**Built:** D23, second half: `send_batch_to_target(&[Message], &SessionId) -> Result<usize,
+QuickFixError>` over the new C `FixSession_sendToTargetBatch(msgs, len, session_id)`, which
+copies the messages into a `std::vector` and calls C++ `Session::sendToTarget(vector, id)`
+(15.7). An empty batch returns 0 without calling C++; a negative C result is the last error
+(`SessionNotFound`, a null pointer, an exception); the send holds the session gate like
+`send_to_target`. Docs: CHANGELOG "Unreleased" → "Added", fork notes row 21b, gateway handover
+§2 (optional, sync mode only).
+**Red → green:** `test_send_batch.rs` rows 21b.1–21b.6: 6 of 6 did not compile (E0425) → 6/6
+green. Logged off, the batch returns 0: C++ stores the first message, finds the session down and
+stops there, so that message can still go out as a PossDup resend, as with `send_to_target`.
+**Checks:** macOS `cargo test --workspace` 198/0/2 (192 + the 6 new tests); CI clippy gate
+(`--workspace --all-targets -D warnings`) passes; `rust-policy-check --only fmt,ast-grep,clippy`:
+fmt passes, the other lanes fail only outside this phase (the FFI crate's `#![allow]`s, the spec
+parser's lifetimes); policy lints run as warnings on the new code: docs fixed, only `expect` in
+tests left. ASan and TSan from CI (local ASan does not link on this Mac, handover 21a). The full
+`lint.sh` also runs the C++ policy over the vendored `libquickfix` and leaves `build/cpp-policy`
+plus `bin/`/`test/` links in the submodule, which break the `quickfix-ffi` build script's copy;
+delete them after a full `lint.sh`.
+**Decisions taken:** the result is `Ok(count)`, not `NotSent` when short: the caller needs the
+count to know which orders went out (C++ 15.7's contract). The Rust side lends the messages
+(`&[Message]`), since C++ copies them anyway. No `Session::send_batch` on a looked-up session: the
+gateway sends through `send_to_target` only.
+**Left for the owner:** the release after 21b (requested 14 Nov 2026).

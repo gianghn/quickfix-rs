@@ -37,6 +37,9 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 - [ ] `send_to_target` returns `Err(QuickFixError::NotSent)` when the order was not written now
       (phase 17, R-P0-12): session down, write failed, or your own `DoNotSend`. Report it to the
       OMS as not sent; add `NotSent` to any exhaustive `match` on `QuickFixError`.
+- [ ] Optional, only with `FileStoreSync=Y`: `send_batch_to_target(&orders, &session)` (phase
+      21b) returns how many went out from the first; report `orders[n..]` to the OMS as not sent.
+      With production's background flush (`FileStoreSync=N`) keep `send_to_target`.
 
 ## 3. Phase 0 rules (still needed with 0.4.0)
 

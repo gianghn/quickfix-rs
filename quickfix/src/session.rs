@@ -8,8 +8,8 @@ use std::{
 use quickfix_ffi::{
     FixSession_isEnabled, FixSession_isLoggedOn, FixSession_logon, FixSession_logout,
     FixSession_lookup, FixSession_refresh, FixSession_reset, FixSession_send,
-    FixSession_sendToTarget, FixSession_setNextSenderMsgSeqNum, FixSession_setNextTargetMsgSeqNum,
-    FixSession_t,
+    FixSession_sendToTarget, FixSession_sendToTargetBatch, FixSession_setNextSenderMsgSeqNum,
+    FixSession_setNextTargetMsgSeqNum, FixSession_t,
 };
 
 use crate::{
@@ -68,6 +68,36 @@ pub fn send_to_target(msg: Message, session_id: &SessionId) -> Result<(), QuickF
     Err(QuickFixError::NotSent(format!(
         "{session_id:?}: not logged on, write failed, or refused by on_msg_to_app"
     )))
+}
+
+/// Send `messages` to the session `session_id` names as one batch (C++ fork 15.7).
+///
+/// Under one hold of the session lock `QuickFIX` stores every message, syncs the store once
+/// (with `FileStoreSync=Y`; this is where the batch saves time), then writes them in order. The
+/// messages are copied; the caller keeps them.
+///
+/// Returns how many went out, from the first: `messages[n..]` were not sent. A batch stops at the
+/// first message that is not written now (not logged on, write failed, `DoNotSend`); that message
+/// may be stored and go out later as a `PossDup` resend, as with [`send_to_target`]. If the one
+/// sync fails, the session disconnects and the result is 0.
+///
+/// # Errors
+///
+/// `QuickFixError::SessionNotFound` when no started acceptor or initiator has `session_id`.
+pub fn send_batch_to_target(
+    messages: &[Message],
+    session_id: &SessionId,
+) -> Result<usize, QuickFixError> {
+    if messages.is_empty() {
+        return Ok(0);
+    }
+    let ptrs: Vec<_> = messages.iter().map(|msg| msg.0).collect();
+    // SAFETY: every pointer is a live C++ message `messages` keeps borrowed for the call, which
+    // only copies them; the gate keeps any session the id finds from being deleted mid-send.
+    let sent = while_sending(|| unsafe {
+        FixSession_sendToTargetBatch(ptrs.as_ptr(), ptrs.len(), session_id.0)
+    });
+    usize::try_from(sent).map_err(|_| QuickFixError::from_last_error())
 }
 
 /// FIX Session.

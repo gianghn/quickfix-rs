@@ -486,6 +486,13 @@ extern "C" {
     // Session
 
     pub fn FixSession_sendToTarget(msg: FixMessage_t, session_id: FixSessionID_t) -> i8;
+    /// Sends `len` messages from `msgs` as one batch; returns how many went out, or < 0 on error.
+    #[must_use]
+    pub fn FixSession_sendToTargetBatch(
+        msgs: *const FixMessage_t,
+        len: usize,
+        session_id: FixSessionID_t,
+    ) -> i64;
     pub fn FixSession_lookup(session_id: FixSessionID_t) -> Option<FixSession_t>;
     #[must_use]
     pub fn FixSession_logout(session: FixSession_t) -> i8;

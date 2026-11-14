@@ -1150,6 +1150,23 @@ int8_t FixSession_sendToTarget(Message *msg, const SessionID *session_id) {
   CATCH_OR_RETURN_ERRNO({ return Session::sendToTarget(*msg, *session_id); });
 }
 
+int64_t FixSession_sendToTargetBatch(Message *const *msgs, size_t len, const SessionID *session_id) {
+  RETURN_VAL_IF_NULL(msgs, ERRNO_INVAL);
+  RETURN_VAL_IF_NULL(session_id, ERRNO_INVAL);
+
+  // KRX fork (go-live 21b): how many went out, from the first; the caller keeps its messages.
+  CATCH_OR_RETURN_ERRNO({
+    std::vector<Message> batch;
+    batch.reserve(len);
+    for (size_t i = 0; i < len; ++i) {
+      RETURN_VAL_IF_NULL(msgs[i], ERRNO_INVAL);
+      batch.push_back(*msgs[i]);
+    }
+    const int64_t sent = Session::sendToTarget(batch, *session_id);
+    return sent;
+  });
+}
+
 FixSession_t *FixSession_lookup(const FixSessionID_t *session_id) {
   RETURN_VAL_IF_NULL(session_id, NULL);
   CATCH_OR_RETURN_NULL({ return Session::lookupSession(*session_id); })
