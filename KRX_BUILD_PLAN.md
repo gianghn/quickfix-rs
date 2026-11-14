@@ -100,6 +100,7 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 20 `SessionId: Send + Sync` | D19: the gateway can keep a `SessionId` in its `Send + Sync` app (its trial build stores the session as text) | H | a `Send + Sync` assertion on `SessionId` does not compile | rows 20.1–20.5 green under ASan and the blocking TSan job |
 | 21a C++ store and gap fixes pinned | D23: `libquickfix` → `krx/main` @ `fc866418`; `FileStoreFlushInterval` and `MaxQueuedMessages` are session settings C++ reads, so no binding change; gateway handover gets the production store settings | H | none possible from Rust: old C++ ignores the setting (the flush is tested in the C++ fork, its rows 15.12–15.14) | rows 21a.1–21a.3 green on macOS, ASan and the blocking TSan job |
 | 21b Batch send | D23: `send_batch_to_target(&[Message], &SessionId) -> Result<usize, QuickFixError>` over C++ `Session::sendToTarget(std::vector<Message>&, const SessionID&)` | M | the checklist's tests do not compile (no function) | rows 21b.1–21b.6 green, ASan and TSan clean |
+| 22 Error reset off the hot path | Gateway finding (14 Nov 2026): since phase 9 (R-P1-2) every binding call clears the `thread_local std::string` error text, and in C++17 each touch of it goes through its TLS init wrapper. The gateway's PCA header step (one `get_field`, one `set_field`) got 14–16 % slower on 0.4.x, the only group over its 10 % limit. Clear the text only when one is set | M | header read + write measured slower on `krx/main` than with the fix (same Linux node, runs alternated) | rows 22.1–22.4 green; row 22.5 faster; ASan and TSan clean |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -161,6 +162,18 @@ and keeps them; the result is how many went out, from the first: `messages[n..]`
 | 21b.5 | An empty batch returns 0 | `empty_batch_sends_none` |
 | 21b.6 | With `FileStoreSync=Y` a batch of 64 is stored and sent; ASan and TSan clean | `batch_with_sync_store_stores_and_sends_all` |
 
+Phase 22 BDD checklist (`quickfix-ffi/tests/test_last_error.rs`, `quickfix/tests/test_field_cost.rs`).
+The change is cost only, so rows 22.1–22.4 guard R-P1-2's behaviour (green before and after) and
+the red is row 22.5, a measurement:
+
+| Row | Behaviour | Test | Before the fix |
+|---|---|---|---|
+| 22.1 | A successful call after a failure leaves no error code and no text | `successful_call_clears_previous_error` (phase 9) | green (guard) |
+| 22.2 | A failed call after a success reports its own error | `failed_call_after_a_success_reports_its_own_error` | green (guard) |
+| 22.3 | A second failure replaces the first error's text | `second_failure_replaces_the_first_error` | green (guard) |
+| 22.4 | A successful call on a thread that never failed reports no error | `successful_call_on_a_new_thread_reports_no_error` | green (guard) |
+| 22.5 | One header `get_field` plus one `set_field` costs less than on `krx/main` | `header_read_and_write_cost` (ignored; release, `--ignored --nocapture`) | red: slower (numbers in handover 22) |
+
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
 
@@ -203,6 +216,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 17 | `krx/golive-p17` | PR #26, merged; version 0.4.0 (D22) | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
 | 21a | `krx/golive-p21a` | PR #28, merged; version 0.4.1 | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
 | 21b | `krx/golive-p21b` | PR #29, merged; version 0.4.1 | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
+| 22 | `krx/golive-p22` | PR open | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
 
 ## 6. Handover notes
 
@@ -778,3 +792,34 @@ count to know which orders went out (C++ 15.7's contract). The Rust side lends t
 (`&[Message]`), since C++ copies them anyway. No `Session::send_batch` on a looked-up session: the
 gateway sends through `send_to_target` only.
 **Left for the owner:** the release after 21b (requested 14 Nov 2026).
+
+### Handover 22 — 2026-11-14
+**Built:** `Fix_resetLastError` clears the error text only when one is set. Every binding call
+starts with it (R-P1-2, phase 9), and each touch of the `thread_local std::string` goes through its
+TLS init wrapper, because its constructor is not `constexpr` in C++17. `Fix_getLastErrorMessage`
+already reads the text only when `hasLastError` is set, so nothing observable changes. Found by
+the gateway's F6 speed check: `exchange_egress/pca_marker_to_board_id` (one header `get_field`,
+one `set_field`) was 12.5–16.1 % slower on 0.4.x in three runs, the only group over its 10 % limit;
+the gateway code and the Rust side of the binding are the same in both versions. Docs: CHANGELOG
+"Unreleased" → "Changed", fork notes row 22.
+**Red → green:** rows 22.1–22.4 green before and after (guards; 22.1 is phase 9's test). Row 22.5,
+`header_read_and_write_cost`, release build, five runs alternated on one Linux node (rke2-node1,
+4 dedicated CPUs), medians: 0.2.2 34.0 ns, `krx/main` 38.5 ns (red), with the fix 36.1 ns.
+**Checks:** macOS `cargo test --workspace --locked` 201/0/3; `cargo fmt --all --check` and the CI
+clippy gate (`--workspace --all-targets --locked -D warnings`) pass. `rust-policy-check --only
+fmt,ast-grep,clippy`: fmt passes, the other lanes fail only outside this phase, as in 21b. C++
+policy, fork mode (`.cpp-policy-fork`, PR #31): clang-tidy reports the same 36 findings in
+`quickfix_bind.cpp` before and after this change (diffed line by line: 14 cognitive complexity,
+mostly the `CATCH_OR_RETURN` chain; 9 anonymous namespace; 9 const correctness; 4 non-const
+globals), ast-grep the same 2 naked `new`/`delete` (lines 866, 873); none in the changed lines.
+ASan and TSan from CI.
+**Measured:** the gateway's gated groups, its F6 tree with this file, against its `fork0` baseline
+(0.2.2), medians: `pca_marker_to_board_id` −3.4 %, `board_name/*` −5.4 % and −6.2 %,
+`end_to_end_nos_flow` +2.3 %, `message_latency` −6.7 %, `single_nos_processing` −11.4 %, the
+strips within their known noise. All within the 10 % limit.
+**Decisions taken:** none needed; the TLS model stays as it is.
+**Left for the owner:** about 2 ns per header read + write is still above 0.2.2: the reset's own
+TLS write and read on every call, the price of R-P1-2. Removing it needs `initial-exec` TLS or the
+reset moved to the failure paths; neither is needed for the gateway's limit. The 36 clang-tidy
+findings above are a separate clean-up. The nightly `KRX fuzz` workflow fails since 12 Nov
+(`fuzz/Cargo.lock` out of date under `--locked`), not touched here. A release for the gateway pin.
