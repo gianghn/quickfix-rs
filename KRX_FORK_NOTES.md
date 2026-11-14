@@ -15,8 +15,8 @@ Keep this file up to date when a patch is added, sent upstream or dropped.
 
 `krx/main` was started at upstream `cc2b7a5` (release 0.2.2, 2026-10). The submodule
 `quickfix-ffi/libquickfix` points at our QuickFIX fork `gianghn/quickfix`, branch `krx/main`
-(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `e1b1559e` since go-live phase 19
-(`11703b2a` in phase 16, `33b12daf` before). Upstream pins QuickFIX
+(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `fc866418` since go-live phase 21a
+(`e1b1559e` in phase 19, `11703b2a` in phase 16, `33b12daf` before). Upstream pins QuickFIX
 master `386ce46e`; on a sync, ours wins.
 
 ## Our patches on upstream 0.2.2
@@ -68,6 +68,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 19 | `Message::as_message_mut()`: an owned message as the `MessageMut` a callback takes; `libquickfix` pinned at `e1b1559e` (C++ teardown fixes 6.1, 6.2, 6.4, 6.5) | none (additive); unit-test `on_msg_to_app`/`on_msg_to_admin` by calling them with `&mut msg.as_message_mut()` instead of moving their logic into helper methods. `on_logout` now runs outside QuickFIX's session lock |
 | 17 | `send_to_target` returns `QuickFixError::NotSent` when the message was not written now (R-P0-12) | **breaking:** a send while logged off, a failed write, or `DoNotSend` from `on_msg_to_app` is now an error, not `Ok`; report the order to the OMS as not sent. A stored message may still go out later as a PossDup resend, so keep the stale-resend check in `on_msg_to_app`. Add `NotSent` to any exhaustive `match` on `QuickFixError` |
 | 20 | `SessionId: Send + Sync` | none (additive); keep `session.clone()` from `on_logon` in the app (e.g. `Mutex<Option<SessionId>>`) instead of its text, and send through it from any thread |
+| 21a | `libquickfix` pinned at `fc866418` (C++ phases 6–8 and 15): background store flush, `MaxQueuedMessages`, faster file store, GapFill/queue, nested group count and resend fixes | no code change. `.ini`: `FileStoreSync=N` with `FileStoreFlushInterval=5` (production, D23); review `MaxQueuedMessages` (default 10000). A KRX message with a wrong nested group count is now rejected |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to

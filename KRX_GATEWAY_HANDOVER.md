@@ -55,9 +55,13 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 - [ ] Production `.ini`, versioned in the gateway, with a test that loads it through
       `SessionSettings::try_from_path`: `PersistMessages=Y`, `ResetOn*=N`, `SocketNodelay=Y`,
       `TimestampPrecision`, `HeartBtInt`, `CheckLatency`/`MaxLatency` per the KRX spec (R-P1-8).
-      From phase 16 (C++ fork settings): `FileStoreSync=Y` (store forced to disk per sent
-      message), `SendTimeout` (default half of HeartBtInt), `ReconnectInterval` 1–2 s so the
-      initiator reaches `SocketConnectHost1` within 5 s.
+      C++ fork settings: `FileStoreSync=N` with `FileStoreFlushInterval=5` (phase 21a, D23: a
+      background thread forces the store to disk every 5 ms, so a host crash or power cut loses
+      up to about 10 ms of sent orders; agree seqnums with HOSE and reconcile recent orders after
+      one, per the C++ fork's Q1 runbook. A failed flush makes the next send fail and disconnects
+      the session), `MaxQueuedMessages` (default 10000, messages held above a sequence gap),
+      `SendTimeout` (default half of HeartBtInt), `ReconnectInterval` 1–2 s so the initiator
+      reaches `SocketConnectHost1` within 5 s.
 - [ ] Dictionary (R-P0-11): confirm which XML is loaded as `DataDictionary=`; set
       `AllowUnknownMsgFields=Y`, `ValidateUserDefinedFields=N`, `ValidateFieldsOutOfOrder=N`;
       alert on every outbound 35=3 and 35=j. FIX44KRX.xml is not yet checked against the member
@@ -79,7 +83,7 @@ The compiler finds all of these; the table in `KRX_FORK_NOTES.md` has one line p
 |---|---|---|
 | ~~R-P0-13 data-length over-read~~ | fixed in the C++ fork, pinned in phase 16 (`11703b2a`): the message is refused | none needed; take a `krx/main` commit at or after phase 16 |
 | R-P0-12 send while down | `send_to_target` returns `NotSent` (phase 17), but the stored order can still go out later as a PossDup resend | the logged-on check, treating `NotSent` as not sent, and the stale-resend `DoNotSend` above |
-| C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16), and the teardown races of acceptor stop, dropped connections and `onLogout` (phase 19, `e1b1559e`); the C++ fork's 6.6 (`setSession` failure) is still open | stop and join senders before `stop()` (section 3) |
+| C++ data races | the `FIX::Mutex`/`SessionState` races are fixed (phase 16), and the teardown races of acceptor stop, dropped connections and `onLogout` (phase 19, `e1b1559e`), and the C++ fork's 6.6 (a connection never takes another port's session; phase 21a, `fc866418`) | stop and join senders before `stop()` (section 3) |
 
 ## 6. Done when
 

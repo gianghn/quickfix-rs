@@ -69,6 +69,7 @@ fix arrives, so CI stays green.
 | D20 | Callback message for tests (gateway request, 13 Nov 2026) | `Message::as_message_mut(&mut self) -> MessageMut<'_>`, safe: the view borrows the message mutably and frees nothing (no `Drop`), as in a callback | phase 19 |
 | D21 | Teardown race found by the blocking TSan job (D18) | **Decided by the owner, 13 Nov 2026:** fixed in the C++ fork (its 6.5, P1-7, upstream #740: `Acceptor::stop` joins the start thread before `onStop`), not suppressed; phase 19 pins `krx/main` @ `e1b1559e`, which also brings 6.1/6.2 (a dropped connection ends its session under the lock) and 6.4 (`onLogout` after the session lock is released) | phase 19 |
 | D22 | Send truth: error or `Ok(false)` (phase 17) | **Decided by the owner, 13 Nov 2026:** `send_to_target` keeps `Result<(), QuickFixError>` and returns the new `QuickFixError::NotSent` when C++ returns false (stored but not written, write failed, or `DoNotSend`), so a caller that uses `?` cannot treat a not-sent order as sent. Breaking (a caller that relied on `Ok`, an exhaustive `match` on the error); the next release is 0.4.0. `Session::send` keeps `Result<bool>` (phase 16) | phase 17 |
+| D23 | C++ store work into quickfix-rs (C++ plan 9.6, Q18) | **Decided by the owner, 14 Nov 2026:** pin the C++ fork's `krx/main` @ `fc866418` (its phases 6–8 and 15, resend in 1000-message reads) first, as its own PR, so the gateway can try background flush (`FileStoreSync=N`, `FileStoreFlushInterval=5`) at once; then bind the batch send (C++ 15.7, for `FileStoreSync=Y`) although production uses background flush. Both additive: no version bump | phase 21 |
 
 ## 4. Phases
 
@@ -97,6 +98,8 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 18 TSan blocking | D18: remove `continue-on-error` from the TSan job | L | TSan job red but ignored | job blocking and green |
 | 19 Callback message for tests | D20: a public way to build the `MessageMut` that `on_msg_to_admin`/`on_msg_to_app` take from an owned `Message`, so the gateway unit-tests its callbacks directly (its trial build moved the logic into helper methods instead) | M | the checklist's tests do not compile (no constructor) | rows 19.1–19.5 green, ASan clean |
 | 20 `SessionId: Send + Sync` | D19: the gateway can keep a `SessionId` in its `Send + Sync` app (its trial build stores the session as text) | H | a `Send + Sync` assertion on `SessionId` does not compile | rows 20.1–20.5 green under ASan and the blocking TSan job |
+| 21a C++ store and gap fixes pinned | D23: `libquickfix` → `krx/main` @ `fc866418`; `FileStoreFlushInterval` and `MaxQueuedMessages` are session settings C++ reads, so no binding change; gateway handover gets the production store settings | H | none possible from Rust: old C++ ignores the setting (the flush is tested in the C++ fork, its rows 15.12–15.14) | rows 21a.1–21a.3 green on macOS, ASan and the blocking TSan job |
+| 21b Batch send | D23: `send_batch_to_target(&[Message], &SessionId) -> Result<usize, QuickFixError>` over C++ `Session::sendToTarget(std::vector<Message>&, const SessionID&)` | M | the checklist's tests do not compile (no function) | rows 21b.1–21b.6 green, ASan and TSan clean |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -134,6 +137,29 @@ Phase 20 BDD checklist (`quickfix/tests/test_session_id_threads.rs`; red = befor
 | 20.3 | Eight threads read the getters, `to_repr` and `clone` of one `Arc<SessionId>` at once: same answers, no race | `session_id_shared_by_threads_reads_the_same` (TSan job) |
 | 20.4 | A `SessionId` made on one thread is dropped on another | `session_id_drops_on_another_thread` (ASan, TSan) |
 | 20.5 | A callback's `&SessionId` still cannot be kept past the callback (it is QuickFIX's; keep a `clone()`) | `compile_fail` doctest on `ApplicationCallback` |
+
+Phase 21 comes in two PRs, 21a first (the gateway tests background flush on it), 21b on top.
+
+Phase 21a BDD checklist (`quickfix/tests/test_store_flush.rs`):
+
+| Row | Behaviour | Test | Red before |
+|---|---|---|---|
+| 21a.1 | The pinned C++ commit is on the C++ fork's `krx/main` | `submodule-pin` CI job | — (check) |
+| 21a.2 | A file store with `FileStoreSync=N`, `FileStoreFlushInterval=5` sends, stores every message and stops cleanly (the flusher is joined on drop) | `a_file_store_with_background_flush_sends_stores_and_stops_cleanly` | green (guard; old C++ ignores the setting) |
+| 21a.3 | The whole suite is unchanged on the new pin | `cargo test --workspace`, ASan, TSan jobs | green (trial on `fc866418`: 191/0/2) |
+
+Phase 21b BDD checklist (`quickfix/tests/test_send_batch.rs`; red = before the function exists).
+The C++ call copies the messages into a `std::vector`, so the Rust side lends them (`&[Message]`)
+and keeps them; the result is how many went out, from the first: `messages[n..]` were not sent.
+
+| Row | Behaviour | Test |
+|---|---|---|
+| 21b.1 | A batch on a logged-on session returns its length and the peer gets every message in order | `batch_on_a_logged_on_session_sends_all_in_order` |
+| 21b.2 | A batch on a session that is not logged on returns 0 and nothing reaches the peer | `batch_while_logged_off_sends_none` |
+| 21b.3 | `DoNotSend` on the third message ends the batch: returns 2, the peer gets the first two only | `batch_stops_at_the_first_refused_message` |
+| 21b.4 | A batch to an unknown session is `SessionNotFound` | `batch_to_an_unknown_session_is_session_not_found` |
+| 21b.5 | An empty batch returns 0 | `empty_batch_sends_none` |
+| 21b.6 | With `FileStoreSync=Y` a batch of 64 is stored and sent; ASan and TSan clean | `batch_with_sync_store_stores_and_sends_all` |
 
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
@@ -175,6 +201,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 19 | `krx/golive-p19` | PR #24, merged | 3 of 3 tests do not compile (no constructor) → 3/3 green, ASan clean; 2 `compile_fail` doctests fail for the intended errors (E0716, E0505); C++ pin `e1b1559e` (D21), TSan green |
 | 20 | `krx/golive-p20` | PR #25, merged | 4 of 4 tests do not compile (E0277, `SessionId` not `Send`/`Sync`) → 4/4 green (5 runs), ASan clean; TSan row 20.3 in the blocking CI job |
 | 17 | `krx/golive-p17` | PR #26, merged; version 0.4.0 (D22) | 2 of 4 tests red (a logged-off send and a `DoNotSend` send return `Ok`) → 4/4 green |
+| 21a | `krx/golive-p21a` | PR open | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
 
 ## 6. Handover notes
 
@@ -701,3 +728,27 @@ and `new`/`delete` findings; the changed lines follow the house style.
 0.3.0 until a release is cut: the gateway pins `krx/main` by commit, and the bump to 0.4.0 belongs
 with the release.
 **Left for the owner:** when to cut 0.4.0.
+
+### Handover 21a — 2026-11-14
+**Built:** D23, first half: `libquickfix` pinned at the C++ fork's `krx/main` @ `fc866418` (was
+`e1b1559e`): its phases 6d/6e, 7, 8 (with #65, resends read 1000 messages at a time) and 15. No
+binding change: `FileStoreFlushInterval` and `MaxQueuedMessages` are read by C++ from the session
+settings; the batch-send and store-batch virtuals (`MessageStore::beginBatch`/`endBatch`) default
+to nothing. Docs: CHANGELOG "Unreleased" → "Changed", fork notes pin line and row 21a, gateway
+handover §3 (production store settings) and §5 (C++ 6.6 fixed), go-live plan status of 14 Nov
+with R-P1-5 and R-P2-5 ticked.
+**Red → green:** none possible from Rust: the old pin ignores the unknown setting, and a flush
+cannot be observed through the binding (the C++ fork tests it, its rows 15.12–15.14). Row 21a.2,
+`test_store_flush.rs`, is a guard: green on `e1b1559e` and on `fc866418`; its value is the
+flusher thread joined on drop, which the ASan and TSan CI jobs check.
+**Checks:** macOS `cargo test --workspace` 192/0/2 (191 + the new test). Local ASan does not link
+on this Mac (Apple clang 21's `___asan_version_mismatch_check_apple_clang_2100` against the
+nightly's runtime; a local toolchain update, not this change): ASan and TSan from CI (Linux, the
+reference platform). `rust-policy-check --only fmt,ast-grep`: fmt passes; ast-grep and metadata
+fail only on findings outside this phase (none in `test_store_flush.rs`).
+**Decisions taken:** D23 (owner). Pinned `fc866418`, the C++ `krx/main` tip, rather than the
+`0275975e` its PR #69 names: it adds the acceptor-restart, resend-stop and resend-range fixes. No
+typed `dictionary_item`s for the two new settings: they are set in the `.ini` (or
+`Dictionary::set`), like `FileStoreSync`.
+**Left for the owner:** the gateway tries `FileStoreSync=N` + `FileStoreFlushInterval=5` on this
+branch's commit; 21b (batch send) next.
