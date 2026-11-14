@@ -28,6 +28,13 @@ report-only (D6) while every report (202 in the last run) had C++ frames on both
 it blocking (D18). Later the same day phase 17 closed R-P0-12 on the Rust side
 (`QuickFixError::NotSent`), so 12 of 13 P0s are done; R-P0-11 waits on the member spec.
 
+**Update, 14 November 2026:** 0.4.0 released (PR #27). Phase 21a pins the C++ fork at
+`fc866418`: background store flush (`FileStoreFlushInterval`, production setting per D23),
+`MaxQueuedMessages`, and the C++ fork's phase 7 picks and phase 8 gap and resend fixes. R-P1-5
+was finished by build phases 10, 12 and 13 and R-P2-5 is superseded by the pins, so 12/13 P0,
+6/8 P1 and 4/7 P2 are done. Still open: R-P0-11, R-P1-7 and R-P1-8 (gateway), R-P2-3/4/6,
+Phase 0 (gateway) and Phase 4 (evidence; the C++ fork's Phase 8 long runs are pending).
+
 ## How the work is split
 
 | Who | What |
@@ -169,7 +176,7 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 
 ## Phase 3: build, CI and fork hygiene (alongside sprints 1 and 2)
 
-- [ ] **R-P1-5 Non-hermetic, unhardened build.** `quickfix-ffi/build.rs:22-35, 55-74, 131-145`.
+- [x] **R-P1-5 Non-hermetic, unhardened build.** (Done in build phases 10, 12 and 13.) `quickfix-ffi/build.rs:22-35, 55-74, 131-145`.
       Fix: fail with a clear message instead of `git submodule update` over the network; sccache/ccache only
       by env opt-in; add `-fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong
       -fstack-clash-protection -ffile-prefix-map`; drop `-w` (`-Wall` visible in CI); pinned container; split debuginfo.
@@ -188,7 +195,7 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 - [ ] **R-P2-3** Fix the plain `SocketAcceptor` close/delete race in the C++ fork (`SocketAcceptor.cpp:110-167`).
       Test: 10-cycle stop loop in SingleThreaded mode, zero crashes.
 - [ ] **R-P2-4** Fast-forward fork `main` (stale at `1ee16fe`, 21 behind upstream `cc2b7a5`) and add a scheduled check.
-- [ ] **R-P2-5** Bump the submodule to C++ krx/main `25273cc` or record why not (superseded by the sprint 1 pin).
+- [x] **R-P2-5** Bump the submodule to C++ krx/main `25273cc` or record why not (superseded by the pins of build phases 16, 19 and 21a).
 - [ ] **R-P2-6** Upstream the `test_session` fix (`c5f99f3`), then the seqnum API, -6 and `clone_group` patches.
 - [x] **R-P2-7** Docs and metadata: drop "ready for production" from the README; fix the `quickfix-msgkrx`
       crate doc ("FIX44.xml"), `authors` and `license`; replace the SharePoint link in FIX44KRX.xml with a

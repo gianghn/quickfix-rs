@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased (KRX fork, krx/main)
+
+### Changed
+
+- `libquickfix` pinned at the C++ fork's `krx/main` @ `fc866418` (go-live phase 21a). New
+  session settings, read by QuickFIX itself: `FileStoreFlushInterval` (ms; with
+  `FileStoreSync=N` a background thread forces the file store to disk this often; a failed flush
+  fails the next stored message, which disconnects the session) and `MaxQueuedMessages` (messages
+  above a sequence gap held for the resend, default 10000; past it they are dropped and the
+  resend brings them back). File store writes take fewer system calls. A GapFill drops the
+  queued messages it skips and logs it; nested repeating-group counts are validated
+  (`RepeatingGroupCountMismatch`); validation settings apply with `UseDataDictionary=N`; a
+  resend stops at a failed send and reads its range 1000 messages at a time; a connection never
+  takes another port's session; a restarted acceptor forgets its old listening sockets.
+
 ## 0.4.0 (KRX fork, krx/main, not published to crates.io)
 
 ### Breaking changes
