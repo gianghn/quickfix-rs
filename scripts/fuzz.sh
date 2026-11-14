@@ -26,4 +26,10 @@ for sym in llvm-symbolizer llvm-symbolizer-18; do
 done
 
 cd "$root/fuzz"
+# A prebuilt cargo-fuzz builds for the triple it was built for (musl from install-action), where ASan
+# can't link; build for the host, which the target-suffixed flags above assume too.
+case ${1:-} in
+  run | build) set -- "$1" --target "$host" "${@:2}" ;;
+  *) ;;
+esac
 exec cargo +nightly fuzz "$@"
