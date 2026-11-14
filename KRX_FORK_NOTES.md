@@ -71,6 +71,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 21a | `libquickfix` pinned at `fc866418` (C++ phases 6–8 and 15): background store flush, `MaxQueuedMessages`, faster file store, GapFill/queue, nested group count and resend fixes | no code change. `.ini`: `FileStoreSync=N` with `FileStoreFlushInterval=5` (production, D23); review `MaxQueuedMessages` (default 10000). A KRX message with a wrong nested group count is now rejected |
 | 21b | `send_batch_to_target`: a batch under one session lock and one store sync (C++ 15.7) | none (additive); only worth it with `FileStoreSync=Y`: one sender thread per session drains the order queue into one call (at most 64), never waiting to fill a batch; orders from the returned count on were not sent |
 | 22 | A successful binding call no longer clears the error text (only a set one is cleared); R-P1-2's behaviour unchanged | none (faster): about 1.5 ns less per FFI call, e.g. a header `get_field` + `set_field` 39.5 → 36.6 ns on Linux |
+| 23 | The binding's C++ cleaned up for the C++ policy: the catch chain in three helpers, error state behind accessors, no naked `new` | none: same error codes, same speed |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to

@@ -93,95 +93,8 @@ _IMPL_CLASS_STUB(ThreadedSSLSocketInitiator, StubInitiator);
   Fix_resetLastError();                                                                                                \
   try {                                                                                                                \
     _XXX_                                                                                                              \
-  } catch (FIX::DataDictionaryNotFound & ex) {                                                                         \
-    Fix_setLastError(ex, ERROR_DATA_DICTIONARY_NOT_FOUND);                                                             \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::FieldNotFound & ex) {                                                                                  \
-    Fix_setLastError(ex, ERROR_FIELD_NOT_FOUND);                                                                       \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::FieldConvertError & ex) {                                                                              \
-    Fix_setLastError(ex, ERROR_FIELD_CONVERT_ERROR);                                                                   \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::MessageParseError & ex) {                                                                              \
-    Fix_setLastError(ex, ERROR_MESSAGE_PARSE_ERROR);                                                                   \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::InvalidMessage & ex) {                                                                                 \
-    Fix_setLastError(ex, ERROR_INVALID_MESSAGE);                                                                       \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::ConfigError & ex) {                                                                                    \
-    Fix_setLastError(ex, ERROR_CONFIG_ERROR);                                                                          \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::RuntimeError & ex) {                                                                                   \
-    Fix_setLastError(ex, ERROR_RUNTIME_ERROR);                                                                         \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::InvalidTagNumber & ex) {                                                                               \
-    Fix_setLastError(ex, ERROR_INVALID_TAG_NUMBER);                                                                    \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::RequiredTagMissing & ex) {                                                                             \
-    Fix_setLastError(ex, ERROR_REQUIRED_TAG_MISSING);                                                                  \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::TagNotDefinedForMessage & ex) {                                                                        \
-    Fix_setLastError(ex, ERROR_TAG_NOT_DEFINED_FOR_MESSAGE);                                                           \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::NoTagValue & ex) {                                                                                     \
-    Fix_setLastError(ex, ERROR_NO_TAG_VALUE);                                                                          \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::IncorrectTagValue & ex) {                                                                              \
-    Fix_setLastError(ex, ERROR_INCORRECT_TAG_VALUE);                                                                   \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::IncorrectDataFormat & ex) {                                                                            \
-    Fix_setLastError(ex, ERROR_INCORRECT_DATA_FORMAT);                                                                 \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::IncorrectMessageStructure & ex) {                                                                      \
-    Fix_setLastError(ex, ERROR_INCORRECT_MESSAGE_STRUCTURE);                                                           \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::DuplicateFieldNumber & ex) {                                                                           \
-    Fix_setLastError(ex, ERROR_DUPLICATE_FIELD_NUMBER);                                                                \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::InvalidMessageType & ex) {                                                                             \
-    Fix_setLastError(ex, ERROR_INVALID_MESSAGE_TYPE);                                                                  \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::UnsupportedMessageType & ex) {                                                                         \
-    Fix_setLastError(ex, ERROR_UNSUPPORTED_MESSAGE_TYPE);                                                              \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::UnsupportedVersion & ex) {                                                                             \
-    Fix_setLastError(ex, ERROR_UNSUPPORTED_VERSION);                                                                   \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::TagOutOfOrder & ex) {                                                                                  \
-    Fix_setLastError(ex, ERROR_TAG_OUT_OF_ORDER);                                                                      \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::RepeatedTag & ex) {                                                                                    \
-    Fix_setLastError(ex, ERROR_REPEATED_TAG);                                                                          \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::RepeatingGroupCountMismatch & ex) {                                                                    \
-    Fix_setLastError(ex, ERROR_REPEATING_GROUP_COUNT_MISMATCH);                                                        \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::DoNotSend & ex) {                                                                                      \
-    Fix_setLastError(ex, ERROR_DO_NOT_SEND);                                                                           \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::RejectLogon & ex) {                                                                                    \
-    Fix_setLastError(ex, ERROR_REJECT_LOGON);                                                                          \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::SessionNotFound & ex) {                                                                                \
-    Fix_setLastError(ex, ERROR_SESSION_NOT_FOUND);                                                                     \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::IOException & ex) {                                                                                    \
-    Fix_setLastError(ex, ERROR_IO_EXCEPTION);                                                                          \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::SocketSendFailed & ex) {                                                                               \
-    Fix_setLastError(ex, ERROR_SOCKET_SEND_FAILED);                                                                    \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::SocketRecvFailed & ex) {                                                                               \
-    Fix_setLastError(ex, ERROR_SOCKET_RECV_FAILED);                                                                    \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::SocketCloseFailed & ex) {                                                                              \
-    Fix_setLastError(ex, ERROR_SOCKET_CLOSE_FAILED);                                                                   \
-    return (_VAL_);                                                                                                    \
-  } catch (FIX::SocketException & ex) {                                                                                \
-    Fix_setLastError(ex, ERROR_SOCKET_EXCEPTION);                                                                      \
-    return (_VAL_);                                                                                                    \
-  } catch (std::exception & e) {                                                                                       \
-    Fix_setLastError(e, ERRNO_EXCEPTION);                                                                              \
+  } catch (const std::exception &) {                                                                                   \
+    Fix_setLastErrorFromCurrentException();                                                                            \
     return (_VAL_);                                                                                                    \
   } catch (...) {                                                                                                      \
     Fix_setLastErrorText("unknown exception (not a std::exception)", ERRNO_EXCEPTION);                                 \
@@ -195,52 +108,169 @@ _IMPL_CLASS_STUB(ThreadedSSLSocketInitiator, StubInitiator);
 extern "C" {
 namespace FIX {
 
-// A std::string, not a raw buffer: a message nobody read is freed when its thread exits (R-P1-2).
-static thread_local std::string lastError;
-static thread_local bool hasLastError = false;
-static thread_local int8_t lastErrorCode = 0;
+// C++ linkage: inside extern "C", GCC exports these under their plain names, and an exported
+// function is not inlined under -fPIC, which put two calls back on every wrapper (go-live phase 23).
+extern "C++" {
+namespace {
 
-static void Fix_setLastErrorText(const char *text, int8_t code) {
-  lastErrorCode = code;
-  lastError = text;
-  hasLastError = true;
+// This thread's last error. Trivial and constant-initialised, so reaching it needs no TLS init
+// check (go-live phase 22); the text lives apart and is touched only when an error is set or read.
+struct LastError {
+  int8_t code = 0;
+  bool hasText = false;
+};
+
+LastError &lastError() {
+  thread_local LastError state;
+  return state;
 }
 
-static void Fix_setLastError(std::exception &ex, int8_t code) { Fix_setLastErrorText(ex.what(), code); }
+// A std::string, not a raw buffer: a message nobody read is freed when its thread exits (R-P1-2).
+std::string &lastErrorText() {
+  thread_local std::string text;
+  return text;
+}
 
-const char *Fix_getLastErrorMessage() { return hasLastError ? lastError.c_str() : nullptr; }
+void Fix_setLastErrorText(const char *text, int8_t code) {
+  lastErrorText() = text;
+  lastError() = LastError{code, true};
+}
 
-int8_t Fix_getLastErrorCode() { return lastErrorCode; }
+void Fix_setLastError(const std::exception &ex, int8_t code) { Fix_setLastErrorText(ex.what(), code); }
 
 // What a fromAdmin/fromApp callback named with its reject code: the tag for RefTagID and the text
 // for a logon reject. Set by the callback on this thread, read when the code is turned into the
 // QuickFIX exception (R-P2-2).
-static thread_local int32_t rejectTag = 0;
-static thread_local std::string rejectText;
+struct RejectDetail {
+  int32_t tag = 0;
+  std::string text;
+};
 
-void FixApplication_setRejectDetail(int32_t tag, const char *text) {
-  rejectTag = tag;
-  rejectText = text ? text : "";
+RejectDetail &rejectDetail() {
+  thread_local RejectDetail detail;
+  return detail;
 }
 
-static void Fix_clearRejectDetail() {
-  rejectTag = 0;
-  rejectText.clear();
-}
-
-void Fix_clearLastErrorMessage() {
-  lastError.clear();
-  hasLastError = false;
+void Fix_clearRejectDetail() {
+  RejectDetail &detail = rejectDetail();
+  detail.tag = 0;
+  detail.text.clear();
 }
 
 // Every wrapper starts here, so a failure reports its own error, never an earlier call's (R-P1-2).
 // The text is cleared only when set: touching the thread_local std::string goes through its TLS
 // init wrapper (C++17), a cost every successful call would pay (go-live phase 22).
-static void Fix_resetLastError() {
-  lastErrorCode = 0;
-  if (hasLastError) {
-    Fix_clearLastErrorMessage();
+void Fix_resetLastError() {
+  LastError &state = lastError();
+  state.code = 0;
+  if (state.hasText) {
+    lastErrorText().clear();
+    state.hasText = false;
   }
+}
+
+// The std::exception CATCH_OR_RETURN caught, as an error code. One catch chain in the original order
+// (a derived type before its base), split in three so no function grows too long: each part
+// rethrows the exception being handled and passes the types it does not know to the next part.
+// Called only from that catch, so the exception is always a std::exception.
+void Fix_setLastErrorFromSessionException() {
+  try {
+    throw;
+  } catch (const FIX::DoNotSend &ex) {
+    Fix_setLastError(ex, ERROR_DO_NOT_SEND);
+  } catch (const FIX::RejectLogon &ex) {
+    Fix_setLastError(ex, ERROR_REJECT_LOGON);
+  } catch (const FIX::SessionNotFound &ex) {
+    Fix_setLastError(ex, ERROR_SESSION_NOT_FOUND);
+  } catch (const FIX::IOException &ex) {
+    Fix_setLastError(ex, ERROR_IO_EXCEPTION);
+  } catch (const FIX::SocketSendFailed &ex) {
+    Fix_setLastError(ex, ERROR_SOCKET_SEND_FAILED);
+  } catch (const FIX::SocketRecvFailed &ex) {
+    Fix_setLastError(ex, ERROR_SOCKET_RECV_FAILED);
+  } catch (const FIX::SocketCloseFailed &ex) {
+    Fix_setLastError(ex, ERROR_SOCKET_CLOSE_FAILED);
+  } catch (const FIX::SocketException &ex) {
+    Fix_setLastError(ex, ERROR_SOCKET_EXCEPTION);
+  } catch (const std::exception &ex) {
+    Fix_setLastError(ex, ERRNO_EXCEPTION);
+  }
+}
+
+void Fix_setLastErrorFromMessageException() {
+  try {
+    throw;
+  } catch (const FIX::NoTagValue &ex) {
+    Fix_setLastError(ex, ERROR_NO_TAG_VALUE);
+  } catch (const FIX::IncorrectTagValue &ex) {
+    Fix_setLastError(ex, ERROR_INCORRECT_TAG_VALUE);
+  } catch (const FIX::IncorrectDataFormat &ex) {
+    Fix_setLastError(ex, ERROR_INCORRECT_DATA_FORMAT);
+  } catch (const FIX::IncorrectMessageStructure &ex) {
+    Fix_setLastError(ex, ERROR_INCORRECT_MESSAGE_STRUCTURE);
+  } catch (const FIX::DuplicateFieldNumber &ex) {
+    Fix_setLastError(ex, ERROR_DUPLICATE_FIELD_NUMBER);
+  } catch (const FIX::InvalidMessageType &ex) {
+    Fix_setLastError(ex, ERROR_INVALID_MESSAGE_TYPE);
+  } catch (const FIX::UnsupportedMessageType &ex) {
+    Fix_setLastError(ex, ERROR_UNSUPPORTED_MESSAGE_TYPE);
+  } catch (const FIX::UnsupportedVersion &ex) {
+    Fix_setLastError(ex, ERROR_UNSUPPORTED_VERSION);
+  } catch (const FIX::TagOutOfOrder &ex) {
+    Fix_setLastError(ex, ERROR_TAG_OUT_OF_ORDER);
+  } catch (const FIX::RepeatedTag &ex) {
+    Fix_setLastError(ex, ERROR_REPEATED_TAG);
+  } catch (const FIX::RepeatingGroupCountMismatch &ex) {
+    Fix_setLastError(ex, ERROR_REPEATING_GROUP_COUNT_MISMATCH);
+  } catch (const std::exception &) {
+    Fix_setLastErrorFromSessionException();
+  }
+}
+
+void Fix_setLastErrorFromCurrentException() {
+  try {
+    throw;
+  } catch (const FIX::DataDictionaryNotFound &ex) {
+    Fix_setLastError(ex, ERROR_DATA_DICTIONARY_NOT_FOUND);
+  } catch (const FIX::FieldNotFound &ex) {
+    Fix_setLastError(ex, ERROR_FIELD_NOT_FOUND);
+  } catch (const FIX::FieldConvertError &ex) {
+    Fix_setLastError(ex, ERROR_FIELD_CONVERT_ERROR);
+  } catch (const FIX::MessageParseError &ex) {
+    Fix_setLastError(ex, ERROR_MESSAGE_PARSE_ERROR);
+  } catch (const FIX::InvalidMessage &ex) {
+    Fix_setLastError(ex, ERROR_INVALID_MESSAGE);
+  } catch (const FIX::ConfigError &ex) {
+    Fix_setLastError(ex, ERROR_CONFIG_ERROR);
+  } catch (const FIX::RuntimeError &ex) {
+    Fix_setLastError(ex, ERROR_RUNTIME_ERROR);
+  } catch (const FIX::InvalidTagNumber &ex) {
+    Fix_setLastError(ex, ERROR_INVALID_TAG_NUMBER);
+  } catch (const FIX::RequiredTagMissing &ex) {
+    Fix_setLastError(ex, ERROR_REQUIRED_TAG_MISSING);
+  } catch (const FIX::TagNotDefinedForMessage &ex) {
+    Fix_setLastError(ex, ERROR_TAG_NOT_DEFINED_FOR_MESSAGE);
+  } catch (const std::exception &) {
+    Fix_setLastErrorFromMessageException();
+  }
+}
+
+} // namespace
+} // extern "C++"
+
+const char *Fix_getLastErrorMessage() { return lastError().hasText ? lastErrorText().c_str() : nullptr; }
+
+int8_t Fix_getLastErrorCode() { return lastError().code; }
+
+void FixApplication_setRejectDetail(int32_t tag, const char *text) {
+  RejectDetail &detail = rejectDetail();
+  detail.tag = tag;
+  detail.text = text ? text : "";
+}
+
+void Fix_clearLastErrorMessage() {
+  lastErrorText().clear();
+  lastError().hasText = false;
 }
 
 class ApplicationBind : public Application {
@@ -307,13 +337,13 @@ public:
     case CALLBACK_OK:
       return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
-      throw FieldNotFound(rejectTag);
+      throw FieldNotFound(rejectDetail().tag);
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
-      throw IncorrectDataFormat(rejectTag);
+      throw IncorrectDataFormat(rejectDetail().tag);
     case CALLBACK_RESULT_INCORRECT_TAG_VALUE:
-      throw IncorrectTagValue(rejectTag);
+      throw IncorrectTagValue(rejectDetail().tag);
     case CALLBACK_RESULT_REJECT_LOGON:
-      throw RejectLogon(rejectText);
+      throw RejectLogon(rejectDetail().text);
     default:
       failOnUnknownCallbackResult();
     }
@@ -330,11 +360,11 @@ public:
     case CALLBACK_OK:
       return;
     case CALLBACK_RESULT_FIELD_NOT_FOUND:
-      throw FieldNotFound(rejectTag);
+      throw FieldNotFound(rejectDetail().tag);
     case CALLBACK_RESULT_INCORRECT_DATA_FORMAT:
-      throw IncorrectDataFormat(rejectTag);
+      throw IncorrectDataFormat(rejectDetail().tag);
     case CALLBACK_RESULT_INCORRECT_TAG_VALUE:
-      throw IncorrectTagValue(rejectTag);
+      throw IncorrectTagValue(rejectDetail().tag);
     case CALLBACK_RESULT_UNSUPPORTED_MESSAGE_TYPE:
       throw UnsupportedMessageType();
     default:
@@ -863,14 +893,15 @@ Message *FixMessage_fromStringAndDictionary(const char *text, const DataDictiona
 // `len` bytes from `data`, NULs and non-UTF-8 bytes included (phase 15).
 Message *FixMessage_fromBytes(const char *data, size_t len) {
   RETURN_VAL_IF_NULL(data, NULL);
-  CATCH_OR_RETURN_NULL({ return new Message(std::string(data, len), /* validate = */ false); });
+  CATCH_OR_RETURN_NULL({ return std::make_unique<Message>(std::string(data, len), /* validate = */ false).release(); });
 }
 
 Message *FixMessage_fromBytesAndDictionary(const char *data, size_t len, const DataDictionary *dictionary) {
   RETURN_VAL_IF_NULL(data, NULL);
   RETURN_VAL_IF_NULL(dictionary, NULL);
 
-  CATCH_OR_RETURN_NULL({ return new Message(std::string(data, len), *dictionary, /* validate = */ true); });
+  CATCH_OR_RETURN_NULL(
+      { return std::make_unique<Message>(std::string(data, len), *dictionary, /* validate = */ true).release(); });
 }
 
 const char *FixMessage_getField(const Message *obj, int32_t tag) {
@@ -1067,13 +1098,17 @@ Group *FixGroup_copy(const Group *src) {
 // QuickFIX stores each group entry as a plain FieldMap, not a Group: copying it as a Group read
 // the field id and delimiter past the end of the object (R-P0-7). Build a real Group instead:
 // the count tag is `tag`, the delimiter is the entry's first field (fields are kept in order).
-static Group *copyGroupEntry(const FieldMap &parent, int32_t num, int32_t tag) {
+extern "C++" {
+namespace {
+Group *copyGroupEntry(const FieldMap &parent, int32_t num, int32_t tag) {
   const FieldMap &entry = parent.getGroupRef(num, tag);
   const int delim = entry.begin() == entry.end() ? 0 : entry.begin()->getTag();
   auto group = std::make_unique<Group>(tag, delim);
   static_cast<FieldMap &>(*group) = entry;
   return group.release();
 }
+} // namespace
+} // extern "C++"
 
 Group *FixMessage_copyGroup(const Message *obj, int32_t num, int32_t tag) {
   RETURN_VAL_IF_NULL(obj, NULL);
