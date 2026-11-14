@@ -234,9 +234,13 @@ void Fix_clearLastErrorMessage() {
 }
 
 // Every wrapper starts here, so a failure reports its own error, never an earlier call's (R-P1-2).
+// The text is cleared only when set: touching the thread_local std::string goes through its TLS
+// init wrapper (C++17), a cost every successful call would pay (go-live phase 22).
 static void Fix_resetLastError() {
   lastErrorCode = 0;
-  Fix_clearLastErrorMessage();
+  if (hasLastError) {
+    Fix_clearLastErrorMessage();
+  }
 }
 
 class ApplicationBind : public Application {

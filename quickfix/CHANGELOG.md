@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (KRX fork, krx/main)
+
+### Changed
+
+- Every binding call is cheaper: the error text is cleared only when an earlier call set one,
+  instead of on every call, which went through the `thread_local std::string`'s TLS wrapper
+  (C++17). A header `get_field` plus `set_field` takes 36.6 ns instead of 39.5 ns on Linux.
+  Errors still never carry over to a later call (R-P1-2; go-live phase 22).
+
 ## 0.4.1 (KRX fork, krx/main, not published to crates.io)
 
 ### Added
