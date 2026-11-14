@@ -102,6 +102,7 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 21b Batch send | D23: `send_batch_to_target(&[Message], &SessionId) -> Result<usize, QuickFixError>` over C++ `Session::sendToTarget(std::vector<Message>&, const SessionID&)` | M | the checklist's tests do not compile (no function) | rows 21b.1–21b.6 green, ASan and TSan clean |
 | 22 Error reset off the hot path | Gateway finding (14 Nov 2026): since phase 9 (R-P1-2) every binding call clears the `thread_local std::string` error text, and in C++17 each touch of it goes through its TLS init wrapper. The gateway's PCA header step (one `get_field`, one `set_field`) got 14–16 % slower on 0.4.x, the only group over its 10 % limit. Clear the text only when one is set | M | header read + write measured slower on `krx/main` than with the fix (same Linux node, runs alternated) | rows 22.1–22.4 green; row 22.5 faster; ASan and TSan clean |
 | 23 C++ policy clean-up of the binding | The 36 clang-tidy and 2 ast-grep findings the C++ policy's fork mode (PR #31) reports in `quickfix_bind.cpp`: the `CATCH_OR_RETURN` catch chain moves into three helper functions (14 cognitive complexity), the error and reject state into accessor functions in an anonymous namespace (9 + 4 + 1), two naked `new` into `make_unique(...).release()` | L | none possible for a refactor: row 23.1 pins today's exception-to-code mapping first | rows 23.1–23.3 green; findings 38 → 8 (the 8 left are false positives, handover 23); row 22.5 no slower |
+| 24 The binding under the whole C++ policy | `quickfix-ffi/CMakeLists.txt` sets `HOUSE_FORK` and includes `HouseFlags.cmake` when the checker passes `HOUSE_POLICY_DIR`, copies libquickfix's headers at configure time so clang-tidy sees real types, and `quickfixbind` goes through `house_target()`; then the findings that shows on fork lines are fixed | L | 24.1: the policy's config, tidy and build stages fail before | rows 24.1–24.2 green; cargo builds unchanged |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -183,6 +184,13 @@ Phase 23 BDD checklist (a refactor: every row green before and after):
 | 23.2 | R-P1-2 holds: rows 22.1–22.4 | `quickfix-ffi/tests/test_last_error.rs` (4) |
 | 23.3 | The success path costs no more than after phase 22 | row 22.5, alternated with the phase 22 build |
 
+Phase 24 checklist (a build change: red = the policy run on `krx/golive-p23`):
+
+| Row | Behaviour | Check |
+|---|---|---|
+| 24.1 | The binding passes every default stage of the C++ policy with QuickFIX's real headers | `cpp-policy-check quickfix-ffi` |
+| 24.2 | A cargo build is unchanged: no house flags, same tests | `cargo test --workspace --locked` |
+
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
 
@@ -227,6 +235,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 21b | `krx/golive-p21b` | PR #29, merged; version 0.4.1 | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
 | 22 | `krx/golive-p22` | PR open | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
 | 23 | `krx/golive-p23` (on p22) | PR open | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
+| 24 | `krx/golive-p24` (on p23) | PR open | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
 
 ## 6. Handover notes
 
@@ -862,3 +871,24 @@ suppressions; the 8 false positives are reported, not silenced.
 **Left for the owner:** phase 24, the binding built and linted with real headers (CMake with
 `HouseFlags.cmake` and the QuickFIX include path), which turns the false positives into real
 findings to fix.
+
+### Handover 24 — 2026-11-14
+**Built:** `quickfix-ffi/CMakeLists.txt` sets `HOUSE_FORK` and, only when the checker passes
+`HOUSE_POLICY_DIR` (libquickfix's pattern), includes `HouseFlags.cmake`, copies
+`libquickfix/src/C++/*.h` to `<build>/quickfix-include/quickfix` at configure time as a SYSTEM
+include (clang-tidy configures only, and build.rs's copy comes from libquickfix's install), and
+turns the examples off. `quickfixbind` goes through `house_target()` when it exists. Fixed what
+that showed on fork lines: two `size() + 1` and 21b's batch count returned as `int64_t` through
+`static_cast` (`-Wsign-conversion`), `doConnect`'s unused parameter names commented out, and
+`Fix_setLastErrorText` sets the two fields instead of a brace init (tidy wanted C++20 designated
+initializers; cargo builds at C++17).
+**Red → green:** 24.1, `cpp-policy-check quickfix-ffi` on `krx/golive-p23`: config, tidy (the 8
+false positives) and build (`quickfix/Application.h` not found) fail → all 7 default stages pass.
+Without the headers tidy had flagged 8 lines that were fine and missed 6 real ones. 24.2: cargo
+206/0/3, `cargo fmt --check` passes.
+**Measured:** not re-run: the changes are casts and a field assignment on the error path.
+**Decisions taken:** the examples are not checked under the policy (they link libquickfix,
+which the policy build doesn't build), marked `shortcut:`. The policy build compiles the binding
+at C++23 (`house_target`); cargo stays at C++17.
+**Left for the owner:** no CI job runs the C++ policy on this repo yet; ASan/TSan stay with the
+Rust CI.
