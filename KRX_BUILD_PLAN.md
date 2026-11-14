@@ -101,6 +101,7 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 21a C++ store and gap fixes pinned | D23: `libquickfix` → `krx/main` @ `fc866418`; `FileStoreFlushInterval` and `MaxQueuedMessages` are session settings C++ reads, so no binding change; gateway handover gets the production store settings | H | none possible from Rust: old C++ ignores the setting (the flush is tested in the C++ fork, its rows 15.12–15.14) | rows 21a.1–21a.3 green on macOS, ASan and the blocking TSan job |
 | 21b Batch send | D23: `send_batch_to_target(&[Message], &SessionId) -> Result<usize, QuickFixError>` over C++ `Session::sendToTarget(std::vector<Message>&, const SessionID&)` | M | the checklist's tests do not compile (no function) | rows 21b.1–21b.6 green, ASan and TSan clean |
 | 22 Error reset off the hot path | Gateway finding (14 Nov 2026): since phase 9 (R-P1-2) every binding call clears the `thread_local std::string` error text, and in C++17 each touch of it goes through its TLS init wrapper. The gateway's PCA header step (one `get_field`, one `set_field`) got 14–16 % slower on 0.4.x, the only group over its 10 % limit. Clear the text only when one is set | M | header read + write measured slower on `krx/main` than with the fix (same Linux node, runs alternated) | rows 22.1–22.4 green; row 22.5 faster; ASan and TSan clean |
+| 23 C++ policy clean-up of the binding | The 36 clang-tidy and 2 ast-grep findings the C++ policy's fork mode (PR #31) reports in `quickfix_bind.cpp`: the `CATCH_OR_RETURN` catch chain moves into three helper functions (14 cognitive complexity), the error and reject state into accessor functions in an anonymous namespace (9 + 4 + 1), two naked `new` into `make_unique(...).release()` | L | none possible for a refactor: row 23.1 pins today's exception-to-code mapping first | rows 23.1–23.3 green; findings 38 → 8 (the 8 left are false positives, handover 23); row 22.5 no slower |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -174,6 +175,14 @@ the red is row 22.5, a measurement:
 | 22.4 | A successful call on a thread that never failed reports no error | `successful_call_on_a_new_thread_reports_no_error` | green (guard) |
 | 22.5 | One header `get_field` plus one `set_field` costs less than on `krx/main` | `header_read_and_write_cost` (ignored; release, `--ignored --nocapture`) | red: slower (numbers in handover 22) |
 
+Phase 23 BDD checklist (a refactor: every row green before and after):
+
+| Row | Behaviour | Test |
+|---|---|---|
+| 23.1 | A failing call reports the code of the exception C++ threw, from the start, middle and end of the old catch order: config error, field not found, invalid message, config error from a non-numeric setting, session not found | `quickfix-ffi/tests/test_error_codes.rs` (5) |
+| 23.2 | R-P1-2 holds: rows 22.1–22.4 | `quickfix-ffi/tests/test_last_error.rs` (4) |
+| 23.3 | The success path costs no more than after phase 22 | row 22.5, alternated with the phase 22 build |
+
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
 
@@ -217,6 +226,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 21a | `krx/golive-p21a` | PR #28, merged; version 0.4.1 | no red possible from Rust (old C++ ignores `FileStoreFlushInterval`); 1 guard green on both pins; macOS 192/0/2 on `fc866418` |
 | 21b | `krx/golive-p21b` | PR #29, merged; version 0.4.1 | 6 of 6 tests do not compile (E0425, no `send_batch_to_target`) → 6/6 green |
 | 22 | `krx/golive-p22` | PR open | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
+| 23 | `krx/golive-p23` (on p22) | PR open | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
 
 ## 6. Handover notes
 
@@ -823,3 +833,32 @@ TLS write and read on every call, the price of R-P1-2. Removing it needs `initia
 reset moved to the failure paths; neither is needed for the gateway's limit. The 36 clang-tidy
 findings above are a separate clean-up. The nightly `KRX fuzz` workflow fails since 12 Nov
 (`fuzz/Cargo.lock` out of date under `--locked`), not touched here. A release for the gateway pin.
+
+### Handover 23 — 2026-11-14
+**Built:** 23.1: `CATCH_OR_RETURN` keeps one `catch (const std::exception &)` and the non-`std`
+catch-all at the FFI boundary; the 31 typed catches move, in the same order and with the same
+codes (compared mechanically with `krx/main`), into three helpers that rethrow the current
+exception: `Fix_setLastErrorFromCurrentException` → `…FromMessageException` →
+`…FromSessionException`, each ending in `catch (const std::exception &)` for the next. 23.2: the
+error and reject state live behind accessors (`lastError()`, `lastErrorText()`, `rejectDetail()`)
+in an anonymous namespace; `copyGroupEntry` there too. 23.3: `FixMessage_fromBytes*` use
+`std::make_unique<Message>(...).release()`. The helpers sit in `extern "C++" { namespace { … } }`:
+inside `extern "C"` GCC gave them C linkage, exported and never inlined them, and the success path
+went to 40 ns.
+**Red → green:** a refactor: 23.1 (`test_error_codes.rs`, 5 new) and 23.2 (`test_last_error.rs`,
+4) green before and after.
+**Checks:** macOS `cargo test --workspace --locked` 206/0/3; `cargo fmt --all --check` and the CI
+clippy gate pass. C++ policy, fork mode: findings 38 → 8. The 8 left are `misc-const-correctness`
+on lines 723, 794, 1233, 1238, 1261, 1268, 1275, 1280, false positives: the policy's compile
+database has no QuickFIX include path, so tidy sees broken types; the QuickFIX methods called there
+are non-const. With the build's generated headers on the path, const correctness drops from 41 to
+3 (none of the 8), but naming (`Fix_*` helper names, phase 9 lines) and pointer arithmetic (21b's
+batch send) show up on fork lines: phase 24. ast-grep: the two naked `new` gone; the boundary
+catch-all stays in the macro (R-P2-1), the helpers end in a typed catch.
+**Measured:** row 22.5, release, alternated on rke2-node1: `krx/main` 39.0 ns, phase 22 37.0 ns,
+phase 23 36.8 ns.
+**Decisions taken:** the catch-all stays at the boundary (no exception may reach Rust). No
+suppressions; the 8 false positives are reported, not silenced.
+**Left for the owner:** phase 24, the binding built and linted with real headers (CMake with
+`HouseFlags.cmake` and the QuickFIX include path), which turns the false positives into real
+findings to fix.
