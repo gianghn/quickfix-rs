@@ -364,6 +364,22 @@ fn dump_stacks(action: &str, stuck: Duration) {
     }
 }
 
+/// Every socket on `port` (lsof), to see what still holds it when a restart cannot bind.
+fn print_port_users(port: u16) {
+    let out = std::process::Command::new("lsof")
+        .args(["-nP", "-i"])
+        .arg(format!("TCP:{port}"))
+        .output();
+    match out {
+        Ok(out) => eprintln!(
+            "port {port} (this test is pid {}):\n{}",
+            std::process::id(),
+            String::from_utf8_lossy(&out.stdout)
+        ),
+        Err(err) => eprintln!("lsof did not run: {err}"),
+    }
+}
+
 fn started<C: ConnectionHandler>(mut handler: C) -> Result<C, QuickFixError> {
     handler.start()?;
     Ok(handler)
@@ -458,8 +474,10 @@ fn reset_chaos_run(
         let action = usize::try_from(pick).unwrap_or(RESET);
         resets += u64::from(action == RESET);
         let name = CHAOS_ACTIONS[action];
-        let failed =
-            |err: &QuickFixError| eprintln!("seed {seed}, round {rounds}: '{name}' failed: {err}");
+        let failed = |err: &QuickFixError| {
+            eprintln!("seed {seed}, round {rounds}: '{name}' failed: {err}");
+            print_port_users(port);
+        };
         match action {
             3 => {
                 watchdog.run(name, || drop(initiator));
