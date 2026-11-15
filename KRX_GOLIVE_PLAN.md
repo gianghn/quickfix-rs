@@ -44,7 +44,9 @@ done (build phases 11 and 14). Next in this repo is R-P1-7. Everything else stil
 the member spec (R-P0-11), the C++ fork (R-P2-3, R-P2-4), upstream (R-P2-6) or the gateway (Phase 0).
 Later the same day, build phase 25 ran R-P1-7's reset chaos. It explains the reset stall, but it
 found an `Initiator::stop` hang (C++ fork) and a new item, R-P1-9: two containers with one
-session ID segfault. That makes 6 of 9 P1s done.
+session ID segfault. That makes 6 of 9 P1s done. Build phase 26 then fixed the hang in the C++
+fork (gianghn/quickfix#73) and found it was macOS only: Linux, where the gateway runs, was never
+exposed. With that merged, R-P1-7 is done: 7 of 9 P1s.
 
 ## How the work is split
 
@@ -181,15 +183,19 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
       Where: `quickfix_bind.cpp:844-859`, `message.rs:55-108`.
       Fix: `memcpy(buffer, value.data(), value.size())`; `to_fix_string` returns `Result`.
       Test: parse `95=3|96=a\0b` and compare `to_fix_bytes()` byte for byte with the wire.
-- [ ] **R-P1-7 `Session::reset` is a one-sided reset that wipes the store; one 30 s stall inside it is unexplained.**
+- [x] **R-P1-7 `Session::reset` is a one-sided reset that wipes the store; one 30 s stall inside it is unexplained.**
       Fix: rustdoc warning and an operator runbook (when to use `set_next_*` instead).
       Test: 30 seeded chaos runs with reset on and a watchdog; any stall over 10 s yields stacks; zero unexplained.
       Status (build phases 10a and 25): the rustdoc and runbook are done, and the test exists
       (`chaos_with_reset_never_stalls`). Paced sending: 30/30 seeds, 375 resets, 0 stalls. Sending
       flat out: 10–12 s stalls in `stop`, explained (QuickFIX's 10 s Logout wait plus the senders
       starving the session lock), and **one unexplained hang**: `Initiator::stop` waited more than
-      60 s to join a socket thread on a live connection. Not reproduced; the C++ fork has a lead
-      (handover 25). Open until that is fixed or ruled out.
+      60 s to join a socket thread on a live connection.
+      Build phase 26 fixed that hang in the C++ fork (gianghn/quickfix#73, fork row 6.7). A
+      connection thread could connect after `stop()` had shut the sockets down; its session,
+      never logged out, logged on and read for ever. It hangs only on macOS: Linux keeps a
+      shutdown made before the connect, so the thread exits at once. With the fix: flat-out
+      chaos 90/90 seeds on macOS and 90/90 on Linux (lab cluster), no hang (handover 26).
 - [ ] **R-P1-9 (new, 15 Nov 2026) Two containers with one session ID segfault in safe Rust.**
       Building a new `Initiator` before dropping the old one with the same settings: the old
       one's drop unregisters the shared session ID, and the new one's `Initiator::connect`
@@ -242,7 +248,8 @@ No code; this decides go-live.
 - [ ] Multi-hour release-profile soak with latency (only dev-build figures exist: p99 ~114-130 µs loopback).
 - [ ] Dictionary replay of the full UAT capture (R-P0-11 / C++ P0-8).
 - [ ] Root-cause C++ P0-10 (sequence gap) and the `Session::reset` stall (R-P1-7). The stall is
-      explained (build phase 25); the `Initiator::stop` hang found there is not.
+      explained (build phase 25); the `Initiator::stop` hang found there is fixed (build phase
+      26, macOS only).
 - [ ] HOSE certification on the final pinned (C++ SHA, quickfix-rs SHA) pair, vendored into the gateway as one unit.
 
 ## Open questions

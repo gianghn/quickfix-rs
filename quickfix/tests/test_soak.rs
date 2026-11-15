@@ -342,13 +342,25 @@ fn dump_stacks(action: &str, stuck: Duration) {
     } else {
         ("gdb", &["-batch", "-ex", "thread apply all bt", "-p"])
     };
-    match std::process::Command::new(debugger)
+    let mut child = match std::process::Command::new(debugger)
         .args(args)
         .arg(&pid)
-        .output()
+        .stdin(std::process::Stdio::null())
+        .spawn()
     {
-        Ok(out) => eprintln!("{}", String::from_utf8_lossy(&out.stdout)),
-        Err(err) => eprintln!("WATCHDOG: no stacks, {debugger} did not run: {err}"),
+        Ok(child) => child,
+        Err(err) => return eprintln!("WATCHDOG: no stacks, {debugger} did not run: {err}"),
+    };
+    // A debugger that never returns (seen once with lldb) must not keep the watchdog from its abort.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while matches!(child.try_wait(), Ok(None)) {
+        if Instant::now() > deadline {
+            eprintln!("WATCHDOG: {debugger} still attached after 30 s, killed");
+            child.kill().ok();
+            child.wait().ok();
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -446,16 +458,24 @@ fn reset_chaos_run(
         let action = usize::try_from(pick).unwrap_or(RESET);
         resets += u64::from(action == RESET);
         let name = CHAOS_ACTIONS[action];
+        let failed =
+            |err: &QuickFixError| eprintln!("seed {seed}, round {rounds}: '{name}' failed: {err}");
         match action {
             3 => {
                 watchdog.run(name, || drop(initiator));
-                initiator = watchdog.run(name, || started(new_initiator()?))?;
+                initiator = watchdog
+                    .run(name, || started(new_initiator()?))
+                    .inspect_err(failed)?;
             }
             4 => {
                 watchdog.run(name, || drop(acceptor));
-                acceptor = watchdog.run(name, || started(new_acceptor()?))?;
+                acceptor = watchdog
+                    .run(name, || started(new_acceptor()?))
+                    .inspect_err(failed)?;
             }
-            _ => watchdog.run(name, || chaos_step(action, &mut acceptor, &mut initiator))?,
+            _ => watchdog
+                .run(name, || chaos_step(action, &mut acceptor, &mut initiator))
+                .inspect_err(failed)?,
         }
         rounds += 1;
     }
@@ -466,7 +486,9 @@ fn reset_chaos_run(
             .map(|h| h.join().expect("sender thread").len())
             .sum()
     });
-    watchdog.run("final stop", || initiator.stop().and(acceptor.stop()))?;
+    watchdog
+        .run("final stop", || initiator.stop().and(acceptor.stop()))
+        .inspect_err(|err| eprintln!("seed {seed}: 'final stop' failed: {err}"))?;
     watchdog.run("final drop", || drop((initiator, acceptor)));
     fs::remove_dir_all(&dir).ok();
     Ok((rounds, resets, accepted, server.count()))

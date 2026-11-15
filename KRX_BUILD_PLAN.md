@@ -104,6 +104,7 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 23 C++ policy clean-up of the binding | The 36 clang-tidy and 2 ast-grep findings the C++ policy's fork mode (PR #31) reports in `quickfix_bind.cpp`: the `CATCH_OR_RETURN` catch chain moves into three helper functions (14 cognitive complexity), the error and reject state into accessor functions in an anonymous namespace (9 + 4 + 1), two naked `new` into `make_unique(...).release()` | L | none possible for a refactor: row 23.1 pins today's exception-to-code mapping first | rows 23.1–23.3 green; findings 38 → 8 (the 8 left are false positives, handover 23); row 22.5 no slower |
 | 24 The binding under the whole C++ policy | `quickfix-ffi/CMakeLists.txt` sets `HOUSE_FORK` and includes `HouseFlags.cmake` when the checker passes `HOUSE_POLICY_DIR`, copies libquickfix's headers at configure time so clang-tidy sees real types, and `quickfixbind` goes through `house_target()`; then the findings that shows on fork lines are fixed | L | 24.1: the policy's config, tidy and build stages fail before | rows 24.1–24.2 green; cargo builds unchanged |
 | 25 Reset chaos evidence | R-P1-7 test (its rustdoc and runbook came in 10a): `test_soak.rs` gains `chaos_with_reset_never_stalls`, which runs 30 seeded chaos runs with `Session::reset` as half the actions. A watchdog prints every thread's stack when an action passes 10 s and aborts past 60 s. Also an opt-in event log and a send pace | H | no red possible: the test is new evidence; a stall or hang it finds is the red | 30 seeds run; every stall over 10 s explained in the handover, every hang filed |
+| 26 The `Initiator::stop` hang | The hang phase 25 found, fixed in the C++ fork (gianghn/quickfix#73, fork row 6.7): a connection thread that connects after `stop()` shut the sockets down no longer reads on. The submodule moves to that fork commit; the reset chaos watchdog kills a debugger that has not returned in 30 s | H | fork row 6.7 red on macOS first (Linux was never affected, handover 26) | rows 26.1–26.3 green; flat-out reset chaos without a hang on macOS and Linux |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -201,6 +202,15 @@ Phase 25 checklist (`quickfix/tests/test_soak.rs`, opt-in: `cargo test -p quickf
 | 25.2 | Every action over 10 s prints every thread's stack and is listed at the end | the same test's `stalls over the limit` line |
 | 25.3 | The same seed gives the same chaos actions | `QFRS_SEED=<n> QFRS_RESET_RUNS=1` |
 
+Phase 26 checklist (fork `src/C++/test/krx/TeardownRaceScenarios.cpp`, run by `krx_ut "[r-p1-7]"`;
+`quickfix/tests/test_soak.rs`, as phase 25):
+
+| Row | Behaviour | Check |
+|---|---|---|
+| 26.1 | An initiator force-stopped as it connects returns within 3 s, 10 rounds | fork row 6.7, Release, ASan+UBSan, TSan |
+| 26.2 | 30 flat-out reset chaos seeds: no action passes 60 s | `chaos_with_reset_never_stalls` on macOS and Linux |
+| 26.3 | A debugger the watchdog starts for stacks never keeps it from its abort | `dump_stacks` kills it after 30 s |
+
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
 
@@ -247,6 +257,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 23 | `krx/golive-p23` | PR #33, merged; version 0.4.2 | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
 | 24 | `krx/golive-p24` | PR #34, merged; version 0.4.2 | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
 | 25 | `krx/golive-p25` | PR #37 | evidence: paced 30/30 seeds, 375 resets, 0 stalls; flooding: stalls of 10–12 s in stops, then a hang of over 60 s in `Initiator::stop` at seed 10 (not reproduced in 3 replays). Found on the way: two initiators sharing a session ID segfault |
+| 26 | `krx/golive-p26` | PR #38, after fork PR gianghn/quickfix#73 | fork row 6.7: macOS red 3/3 → green; Linux green before and after (the hang is macOS only). Flat-out chaos with the fix: macOS 90/90 seeds over 3 full batches, Linux 90/90, no hang |
 
 ## 6. Handover notes
 
@@ -956,3 +967,58 @@ the hang. (3) Half the actions are resets: at 1 in 7, short runs had none.
 segfault on two containers with one session ID is a new go-live item: should the binding refuse a
 second live container for a session ID, or should the C++ fork make `removeSession` remove only
 its own registration? Linux and sanitizer runs of this test are not done (Phase 4: 50 runs each).
+
+### Handover 26 — 2026-11-15
+**Built:** the fix for the hang phase 25 found, in the C++ fork (gianghn/quickfix#73, commit
+`e351be1b`), and the submodule moved to it. Two lines in `ThreadedSocketInitiator::socketThread`:
+it does not connect once the initiator is stopped, and its read loop ends when the initiator is
+stopped (`read()` wakes at least once a second, `m_stop` is atomic and set before `onStop`). Also
+`dump_stacks` in `test_soak.rs` now kills a debugger still attached after 30 s.
+
+**Cause (confirmed).** `stop()` sends a Logout only to sessions connected at that moment. A
+session between reconnects gets none and stays enabled. If the reconnect loop starts a
+connection thread just as `stop()` begins, that thread waits for the initiator's lock and reaches
+`connect()` after `onStop` has shut the sockets down. Its shutdown came before the connect, the
+session logs on, heartbeats keep the connection alive, and `onStop` joins the thread for ever.
+
+**macOS only.** A shutdown before `connect()` is kept by Linux (the socket reads EOF as soon as it
+connects, so the thread exits) and dropped by macOS (the thread reads on). A probe program
+(`shutdown` → `connect` → `poll`/`recv`) shows it on both: Linux `recv=0` at once, macOS nothing
+within 1 s. So the gateway on Linux was never exposed. The fix costs Linux nothing and makes
+macOS, where developers and the Mac CI run, behave the same.
+
+**Red → green:**
+| Check | Before (engine without the fix) | After |
+|---|---|---|
+| Fork row 6.7 (start, then force-stop at once, 10 rounds, 3 s per stop), macOS | red 3/3: round 0 never returned | green 3/3 Release, 1/1 TSan |
+| Fork row 6.7, Linux (lab cluster, amd64, `ubuntu:24.04`) | green 20/20 | green 20/20 in Release, ASan+UBSan and TSan |
+| Fork `krx_ut`, 125 test cases | — | green: macOS Release; Linux Release, ASan+UBSan, TSan |
+| Flat-out reset chaos, macOS | hang at seed 10 (phase 25) | 90/90 seeds in 3 full batches; no hang |
+| Flat-out reset chaos, Linux (lab cluster, 3 pods × 30 seeds) | 90/90, no hang | 90/90, no hang, no action over 10 s |
+
+**Measured:** with the fix, macOS stops over 10 s were 3–4 per batch at 10.7–10.9 s, all in
+`both stop + start` or `initiator stop + start`: QuickFIX's own 10 s wait for the Logout answer
+under flat-out sending (handover 25). On Linux only one stop passed 10 s, in the run without the
+fix.
+
+**Found on the way:**
+- The first macOS batch with the fix failed at seed 7 with an error returned by one of the test's
+  own calls (reset, logout, logon, start or stop). It was not a hang or the watchdog; my output
+  filter dropped the error line. It did not come back in 4 later macOS batches (seed 7 included)
+  or in 90 Linux seeds.
+- A macOS batch hung for 30 minutes in the harness itself: the watchdog waited for `lldb`, which
+  never returned, so it never reached its 60 s abort. Fixed here (row 26.3).
+- `src/C++/config.h` on the fork's `krx/main` is the CMake-generated copy (committed in its #75).
+  Every CMake configure rewrites it, so it is harmless; noted in #73.
+
+**Checks:** fork `lint.sh .` passes; `cargo clippy -p quickfix --all-targets -D warnings` exit 0;
+`cargo fmt` ok. Linux runs used one-off Jobs in the lab cluster's `krx-soak` namespace (the fork's
+`run.sh` only runs `krx_stress`); they expire after 7 days.
+
+**Decisions taken:** (1) keep the fix although Linux is not affected. (2) Fork row 6.7's red is
+macOS only, noted there, rather than a Linux-only test seam. (3) The submodule points at the fork
+PR's commit; once #73 merges it should point at the merge on `krx/main`.
+
+**Left for the owner:** merge #73, then #37 and this PR. R-P1-7 can then be ticked. The seed 7
+error is not explained; a rerun with the full log would catch it if it comes back. R-P1-9 (two
+containers with one session ID) still needs its fix choice.
