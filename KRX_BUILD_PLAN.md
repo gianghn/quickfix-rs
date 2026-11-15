@@ -103,6 +103,7 @@ Risk class: **H** = memory/thread soundness or message loss, **M** = API or wire
 | 22 Error reset off the hot path | Gateway finding (14 Nov 2026): since phase 9 (R-P1-2) every binding call clears the `thread_local std::string` error text, and in C++17 each touch of it goes through its TLS init wrapper. The gateway's PCA header step (one `get_field`, one `set_field`) got 14–16 % slower on 0.4.x, the only group over its 10 % limit. Clear the text only when one is set | M | header read + write measured slower on `krx/main` than with the fix (same Linux node, runs alternated) | rows 22.1–22.4 green; row 22.5 faster; ASan and TSan clean |
 | 23 C++ policy clean-up of the binding | The 36 clang-tidy and 2 ast-grep findings the C++ policy's fork mode (PR #31) reports in `quickfix_bind.cpp`: the `CATCH_OR_RETURN` catch chain moves into three helper functions (14 cognitive complexity), the error and reject state into accessor functions in an anonymous namespace (9 + 4 + 1), two naked `new` into `make_unique(...).release()` | L | none possible for a refactor: row 23.1 pins today's exception-to-code mapping first | rows 23.1–23.3 green; findings 38 → 8 (the 8 left are false positives, handover 23); row 22.5 no slower |
 | 24 The binding under the whole C++ policy | `quickfix-ffi/CMakeLists.txt` sets `HOUSE_FORK` and includes `HouseFlags.cmake` when the checker passes `HOUSE_POLICY_DIR`, copies libquickfix's headers at configure time so clang-tidy sees real types, and `quickfixbind` goes through `house_target()`; then the findings that shows on fork lines are fixed | L | 24.1: the policy's config, tidy and build stages fail before | rows 24.1–24.2 green; cargo builds unchanged |
+| 25 Reset chaos evidence | R-P1-7 test (its rustdoc and runbook came in 10a): `test_soak.rs` gains `chaos_with_reset_never_stalls`, which runs 30 seeded chaos runs with `Session::reset` as half the actions. A watchdog prints every thread's stack when an action passes 10 s and aborts past 60 s. Also an opt-in event log and a send pace | H | no red possible: the test is new evidence; a stall or hang it finds is the red | 30 seeds run; every stall over 10 s explained in the handover, every hang filed |
 
 Phase 16 BDD checklist (`quickfix/tests/test_data_length.rs`; red = on `33b12daf` under ASan):
 
@@ -191,6 +192,15 @@ Phase 24 checklist (a build change: red = the policy run on `krx/golive-p23`):
 | 24.1 | The binding passes every default stage of the C++ policy with QuickFIX's real headers | `cpp-policy-check quickfix-ffi` |
 | 24.2 | A cargo build is unchanged: no house flags, same tests | `cargo test --workspace --locked` |
 
+Phase 25 checklist (`quickfix/tests/test_soak.rs`, opt-in: `cargo test -p quickfix --release
+--test test_soak chaos_with_reset -- --ignored --nocapture`, run from `quickfix/`):
+
+| Row | Behaviour | Check |
+|---|---|---|
+| 25.1 | 30 seeded runs with `Session::reset` as half the actions: no action passes 60 s | `chaos_with_reset_never_stalls`, paced (`QFRS_SEND_GAP_US=200`) and flooding (default) |
+| 25.2 | Every action over 10 s prints every thread's stack and is listed at the end | the same test's `stalls over the limit` line |
+| 25.3 | The same seed gives the same chaos actions | `QFRS_SEED=<n> QFRS_RESET_RUNS=1` |
+
 Phase 17 BDD checklist (`quickfix/tests/test_send_truth.rs`; red = on `krx/main` before the fix,
 with only the `NotSent` variant added so the tests compile):
 
@@ -236,6 +246,7 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 22 | `krx/golive-p22` | PR #32, merged; version 0.4.2 | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
 | 23 | `krx/golive-p23` | PR #33, merged; version 0.4.2 | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
 | 24 | `krx/golive-p24` | PR #34, merged; version 0.4.2 | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
+| 25 | `krx/golive-p25` | PR #37 | evidence: paced 30/30 seeds, 375 resets, 0 stalls; flooding: stalls of 10–12 s in stops, then a hang of over 60 s in `Initiator::stop` at seed 10 (not reproduced in 3 replays). Found on the way: two initiators sharing a session ID segfault |
 
 ## 6. Handover notes
 
@@ -892,3 +903,56 @@ which the policy build doesn't build), marked `shortcut:`. The policy build comp
 at C++23 (`house_target`); cargo stays at C++17.
 **Left for the owner:** no CI job runs the C++ policy on this repo yet; ASan/TSan stay with the
 Rust CI.
+
+### Handover 25 — 2026-11-15
+**Built:** R-P1-7's test. The rustdoc warning and `doc/RUNBOOK_SEQNUM.md` came in 10a, and the
+harness's `qfrs_stress.rs` was ported in 11 as `test_soak.rs`. What was missing was the chaos
+with reset. `test_soak.rs` gains `chaos_with_reset_never_stalls`:
+- 30 runs (`QFRS_RESET_RUNS`) of 10 s each (`QFRS_RESET_SECS`), seeds from `QFRS_SEED`.
+- Half the actions are `Session::reset`; the rest are the harness's other six (logout and
+  logon, stop and start of either side or both, drop and rebuild of either side). An
+  xorshift generator picks them, so a seed always gives the same chaos.
+- A watchdog prints every thread's stack (lldb on macOS, gdb on Linux) once when an action
+  passes 10 s (`QFRS_WATCHDOG_SECS`), lists those actions at the end, and aborts past 60 s
+  (`QFRS_HANG_SECS`).
+- `QFRS_VERBOSE=1` prints session events and admin messages with timestamps.
+- `QFRS_SEND_GAP_US` paces both sender threads (default 0: flat out, as before).
+
+Delivery is not checked: a reset wipes the store by design. The no-reset chaos test still checks it.
+**Red → green:** no red possible: the test is new evidence. What it found is below.
+**Measured (macOS arm64, release, C++ `fc866418`):**
+- Paced, `QFRS_SEND_GAP_US=200` (about 5 000 sends/s per thread): 30/30 seeds, 375 resets,
+  **0 actions over 10 s** (334 s).
+- Flooding (default), two sender threads with no pause (up to 780 000 sends in a 10 s run):
+  seeds 1–9 ran, with stalls of 10.1–11.7 s, all in `Initiator::stop`, none in a reset.
+  The event log of seed 3 shows why. `stop` flags the Logout at 0.44 s, but the Logout goes
+  out at 10.56 s. QuickFIX's stop waits up to 10 s for the answer, and meanwhile the two
+  senders hold the session lock almost all the time, so the session's own work starves
+  (resends at about 60 ms each, the acceptor's 10 000-message queue full). The 30 s stall the
+  research harness saw inside `reset` fits this, since reset takes the same lock; it did not
+  recur in any of the runs, about 470 resets in all.
+- **A hang**, flooding, seed 10, `final stop`, just after the senders were joined:
+  `Initiator::stop` → `ThreadedSocketInitiator::onStop` waited more than 60 s to join an
+  initiator socket thread polling in `ThreadedSocketConnection::read`, while an acceptor
+  connection thread also polled: a live connection that nothing shut down. It did not
+  reproduce in 3 replays of seed 10. Lead for the C++ fork: `doConnect` puts the socket in
+  `m_threads` before the socket thread calls `connect()`. If `onStop` runs in that window, its
+  `shutdown()` hits a socket that isn't connected yet and does nothing. The thread then
+  connects and reads forever while `onStop` joins it.
+
+**Found on the way (safe Rust segfault):** building a new `Initiator` before dropping the old one
+with the same settings (`*initiator = Initiator::try_new(...)?`) segfaults. The old one's drop
+unregisters the session ID the new one shares, and the new one's `Initiator::connect` dereferences
+a null `Session*` (`EXC_BAD_ACCESS` at 0x220). The test now drops before rebuilding, as the harness
+did.
+**Checks:** `cargo clippy -p quickfix --all-targets -D warnings` exit 0; `cargo fmt` ok.
+`lint.sh --changed`: the Rust policy lanes and ast-grep fail as on `krx/main` (checked with this
+change stashed), and none of their findings is in `test_soak.rs`.
+**Decisions taken:** (1) stalls are reported with stacks, not failed: QuickFIX's stop waits up to
+10 s by design, so a 10 s limit always catches some stops when sending flat out. A hang past 60 s
+aborts the test. (2) The default stays flat out, the harsher case, so the default run can hit
+the hang. (3) Half the actions are resets: at 1 in 7, short runs had none.
+**Left for the owner:** R-P1-7 stays open on the hang (C++ fork, with the lead above). The
+segfault on two containers with one session ID is a new go-live item: should the binding refuse a
+second live container for a session ID, or should the C++ fork make `removeSession` remove only
+its own registration? Linux and sanitizer runs of this test are not done (Phase 4: 50 runs each).

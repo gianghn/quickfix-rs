@@ -6,7 +6,8 @@
 //! ```
 //!
 //! `QFRS_SOAK_SECS` sets the chaos length (default 60), `QFRS_LATENCY_N` the round trips
-//! (default 10000).
+//! (default 10000). The reset chaos (R-P1-7, go-live phase 25) takes `QFRS_RESET_RUNS`,
+//! `QFRS_RESET_SECS`, `QFRS_SEED` and `QFRS_WATCHDOG_SECS` (see its test).
 
 use std::{
     env, fs,
@@ -14,7 +15,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{sync_channel, SyncSender},
-        Arc, Mutex, MutexGuard, PoisonError,
+        Arc, Mutex, MutexGuard, OnceLock, PoisonError,
     },
     thread,
     time::{Duration, Instant},
@@ -75,6 +76,8 @@ impl ApplicationCallback for Inbox {
 /// Sends `t<thread>.n<k>` until `stop`; returns the `k` whose send returned `Ok`.
 fn send_until(thread: usize, stop: &AtomicBool) -> Vec<u64> {
     let id = ServerType::Sender.session_id();
+    // QFRS_SEND_GAP_US paces the sends; 0 (default) floods, which starves the session's own work.
+    let gap = Duration::from_micros(env_or("QFRS_SEND_GAP_US", 0));
     let mut accepted = Vec::new();
     let mut k = 0u64;
     while !stop.load(Ordering::Relaxed) {
@@ -83,6 +86,9 @@ fn send_until(thread: usize, stop: &AtomicBool) -> Vec<u64> {
             accepted.push(k);
         }
         k += 1;
+        if !gap.is_zero() {
+            thread::sleep(gap);
+        }
     }
     accepted
 }
@@ -205,6 +211,295 @@ fn assert_delivered_once_in_order(accepted: &[Vec<u64>], server: &Inbox) {
             .count();
         assert_eq!(lost, 0, "thread {i}: {lost} accepted messages lost");
     }
+}
+
+type ResetAcceptor<'a> = Acceptor<'a, Inbox, EventLog, FileMessageStoreFactory>;
+type ResetInitiator<'a> = Initiator<'a, NullFixApplication, EventLog, FileMessageStoreFactory>;
+
+/// The reset chaos actions, picked by the seeded generator; `RESET` is `Session::reset`.
+const CHAOS_ACTIONS: [&str; 7] = [
+    "initiator session logout + logon",
+    "acceptor stop + start",
+    "initiator stop + start",
+    "initiator drop + rebuild",
+    "acceptor drop + rebuild",
+    "initiator session reset",
+    "both stop + start",
+];
+const RESET: usize = 5;
+
+/// xorshift64: the same seed gives the same chaos.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Self(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
+    }
+
+    fn below(&mut self, n: u64) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0 % n
+    }
+}
+
+/// Aborts with every thread's stack when one action runs longer than its limit (R-P1-7).
+/// Prints every thread's stack once when an action runs past `stall`, and aborts past `hang`
+/// (R-P1-7); `run` records each action that ran past `stall`.
+struct Watchdog {
+    current: Arc<Mutex<Option<(&'static str, Instant)>>>,
+    stall: Duration,
+    stalls: Mutex<Vec<(&'static str, Duration)>>,
+}
+
+impl Watchdog {
+    fn start(stall: Duration, hang: Duration) -> Self {
+        let current = Arc::new(Mutex::new(None::<(&'static str, Instant)>));
+        let watched = Arc::clone(&current);
+        thread::spawn(move || {
+            let mut dumped = None;
+            loop {
+                thread::sleep(Duration::from_millis(250));
+                let action = *watched.lock().unwrap_or_else(PoisonError::into_inner);
+                let Some((name, since)) = action else {
+                    continue;
+                };
+                if since.elapsed() > hang {
+                    dump_stacks(name, since.elapsed());
+                    std::process::abort();
+                }
+                if since.elapsed() > stall && dumped != Some(since) {
+                    dump_stacks(name, since.elapsed());
+                    dumped = Some(since);
+                }
+            }
+        });
+        Self {
+            current,
+            stall,
+            stalls: Mutex::default(),
+        }
+    }
+
+    fn run<T>(&self, name: &'static str, action: impl FnOnce() -> T) -> T {
+        let since = Instant::now();
+        *self.current.lock().unwrap_or_else(PoisonError::into_inner) = Some((name, since));
+        verbose(&format!("action: {name}"));
+        let out = action();
+        *self.current.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        if since.elapsed() > self.stall {
+            let mut stalls = self.stalls.lock().unwrap_or_else(PoisonError::into_inner);
+            stalls.push((name, since.elapsed()));
+        }
+        out
+    }
+}
+
+/// With `QFRS_VERBOSE` set, prints `text` with the seconds since the first line.
+fn verbose(text: &str) {
+    static START: OnceLock<Instant> = OnceLock::new();
+    if env::var_os("QFRS_VERBOSE").is_some() {
+        let at = START.get_or_init(Instant::now).elapsed().as_secs_f64();
+        eprintln!("[{at:>9.3}] {text}");
+    }
+}
+
+/// Session events and admin messages for `QFRS_VERBOSE` (application messages are left out).
+#[derive(Debug)]
+struct EventLog;
+
+impl EventLog {
+    fn admin(direction: &str, id: Option<&SessionId>, msg: &str) {
+        if !msg.contains("\u{1}35=B\u{1}") {
+            let side = id
+                .and_then(SessionId::get_sender_comp_id)
+                .unwrap_or_default();
+            verbose(&format!("{side} {direction} {}", msg.replace('\u{1}', "|")));
+        }
+    }
+}
+
+impl LogCallback for EventLog {
+    fn on_incoming(&self, id: Option<&SessionId>, msg: &str) {
+        Self::admin("in ", id, msg);
+    }
+
+    fn on_outgoing(&self, id: Option<&SessionId>, msg: &str) {
+        Self::admin("out", id, msg);
+    }
+
+    fn on_event(&self, id: Option<&SessionId>, msg: &str) {
+        Self::admin("event", id, &format!("\u{1}{msg}"));
+    }
+}
+
+fn dump_stacks(action: &str, stuck: Duration) {
+    eprintln!("WATCHDOG: '{action}' stuck for {stuck:?}; thread stacks follow");
+    let pid = std::process::id().to_string();
+    let (debugger, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
+        ("lldb", &["--batch", "-o", "thread backtrace all", "-p"])
+    } else {
+        ("gdb", &["-batch", "-ex", "thread apply all bt", "-p"])
+    };
+    match std::process::Command::new(debugger)
+        .args(args)
+        .arg(&pid)
+        .output()
+    {
+        Ok(out) => eprintln!("{}", String::from_utf8_lossy(&out.stdout)),
+        Err(err) => eprintln!("WATCHDOG: no stacks, {debugger} did not run: {err}"),
+    }
+}
+
+fn started<C: ConnectionHandler>(mut handler: C) -> Result<C, QuickFixError> {
+    handler.start()?;
+    Ok(handler)
+}
+
+/// Every action but drop + rebuild, which the run loop does: the old object must be dropped
+/// before the new one is built, or its drop unregisters the new one's session (a segfault in
+/// `Initiator::connect`, found by this test).
+fn chaos_step(
+    action: usize,
+    acceptor: &mut ResetAcceptor<'_>,
+    initiator: &mut ResetInitiator<'_>,
+) -> Result<(), QuickFixError> {
+    let id = ServerType::Sender.session_id();
+    match action {
+        0 | RESET => {
+            // SAFETY: the initiator that owns this session lives on this thread and is not
+            // dropped while the session handle is in use.
+            if let Ok(mut session) = unsafe { Session::lookup(&id) } {
+                if action == RESET {
+                    return session.reset();
+                }
+                session.logout()?;
+                thread::sleep(Duration::from_millis(200));
+                session.logon()?;
+            }
+        }
+        1 => {
+            acceptor.stop()?;
+            acceptor.start()?;
+        }
+        2 => {
+            initiator.stop()?;
+            initiator.start()?;
+        }
+        _ => {
+            initiator.stop()?;
+            acceptor.stop()?;
+            acceptor.start()?;
+            initiator.start()?;
+        }
+    }
+    Ok(())
+}
+
+/// One seeded run; returns (rounds, resets, sends accepted, messages received).
+fn reset_chaos_run(
+    seed: u64,
+    secs: u64,
+    watchdog: &Watchdog,
+) -> Result<(u64, u64, usize, usize), QuickFixError> {
+    let port = find_available_port();
+    let dir = env::temp_dir().join(format!("qfrs-reset-{}-{seed}", std::process::id()));
+    fs::remove_dir_all(&dir).ok();
+    let settings_client = file_store_settings(ServerType::Sender, port, &dir.join("client"));
+    let settings_server = file_store_settings(ServerType::Receiver, port, &dir.join("server"));
+    let (client, server) = (NullFixApplication, Inbox::default());
+    let log = LogFactory::try_new(&EventLog)?;
+    let app_client = Application::try_new(&client)?;
+    let app_server = Application::try_new(&server)?;
+    let store_client = FileMessageStoreFactory::try_new(&settings_client)?;
+    let store_server = FileMessageStoreFactory::try_new(&settings_server)?;
+    let kind = FixSocketServerKind::MultiThreaded;
+    let new_acceptor =
+        || Acceptor::try_new(&settings_server, &app_server, &store_server, &log, kind);
+    let new_initiator =
+        || Initiator::try_new(&settings_client, &app_client, &store_client, &log, kind);
+    let mut acceptor = new_acceptor()?;
+    let mut initiator = new_initiator()?;
+    acceptor.start()?;
+    initiator.start()?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let senders: Vec<_> = (0..SENDER_THREADS)
+        .map(|i| {
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || send_until(i, &stop))
+        })
+        .collect();
+    verbose(&format!("seed {seed} started"));
+    let mut rng = Rng::new(seed);
+    let (mut rounds, mut resets) = (0, 0);
+    let end = Instant::now() + Duration::from_secs(secs);
+    while Instant::now() < end {
+        thread::sleep(Duration::from_millis(150 + rng.below(350)));
+        // Half the actions are resets, so a short run still exercises it.
+        let pick = if rng.below(2) == 0 {
+            RESET as u64
+        } else {
+            rng.below(CHAOS_ACTIONS.len() as u64)
+        };
+        let action = usize::try_from(pick).unwrap_or(RESET);
+        resets += u64::from(action == RESET);
+        let name = CHAOS_ACTIONS[action];
+        match action {
+            3 => {
+                watchdog.run(name, || drop(initiator));
+                initiator = watchdog.run(name, || started(new_initiator()?))?;
+            }
+            4 => {
+                watchdog.run(name, || drop(acceptor));
+                acceptor = watchdog.run(name, || started(new_acceptor()?))?;
+            }
+            _ => watchdog.run(name, || chaos_step(action, &mut acceptor, &mut initiator))?,
+        }
+        rounds += 1;
+    }
+    stop.store(true, Ordering::Relaxed);
+    let accepted: usize = watchdog.run("join senders", || {
+        senders
+            .into_iter()
+            .map(|h| h.join().expect("sender thread").len())
+            .sum()
+    });
+    watchdog.run("final stop", || initiator.stop().and(acceptor.stop()))?;
+    watchdog.run("final drop", || drop((initiator, acceptor)));
+    fs::remove_dir_all(&dir).ok();
+    Ok((rounds, resets, accepted, server.count()))
+}
+
+/// R-P1-7: seeded chaos runs with `Session::reset` among the actions. A reset wipes the store by
+/// design, so delivery is not checked here (the test above checks it without reset); the run
+/// fails if any action takes longer than `QFRS_WATCHDOG_SECS` (default 10), and the watchdog
+/// prints every thread's stack before it aborts. `QFRS_RESET_RUNS` runs (default 30) of
+/// `QFRS_RESET_SECS` each (default 10), seeds from `QFRS_SEED` (default 1).
+#[test]
+#[ignore = "opt-in soak: QFRS_RESET_RUNS seeded reset chaos runs, see the file header"]
+fn chaos_with_reset_never_stalls() -> Result<(), QuickFixError> {
+    let _lock = serial();
+    let watchdog = Watchdog::start(
+        Duration::from_secs(env_or("QFRS_WATCHDOG_SECS", 10)),
+        Duration::from_secs(env_or("QFRS_HANG_SECS", 60)),
+    );
+    let first = env_or("QFRS_SEED", 1);
+    for seed in first..first + env_or("QFRS_RESET_RUNS", 30) {
+        let (rounds, resets, accepted, received) =
+            reset_chaos_run(seed, env_or("QFRS_RESET_SECS", 10), &watchdog)?;
+        println!(
+            "seed {seed}: {rounds} chaos rounds, {resets} resets; {accepted} sends accepted, \
+             {received} received"
+        );
+    }
+    let stalls = watchdog
+        .stalls
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    println!("stalls over the limit: {stalls:?}");
+    Ok(())
 }
 
 /// Client side of the latency run: signals each echo it gets.
