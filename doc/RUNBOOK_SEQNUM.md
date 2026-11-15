@@ -34,8 +34,17 @@ gone. The counterparty is not told. Unless it resets at the same moment (a coord
 usually at the start of the trading day with 141=Y), the next logon fails, and a later
 ResendRequest gets gap fills instead of the orders. Use it only for that agreed daily reset.
 
-## Open item
+## Slow stops and resets
 
-One run of the go-live chaos tests stalled for 30 s inside `reset`; the cause is not known yet
-(`KRX_GOLIVE_PLAN.md`, R-P1-7). If a reset hangs, take thread stacks (`gdb -p PID -batch
--ex 'thread apply all bt'`) before restarting, and attach them to that item.
+`Initiator::stop` and `Acceptor::stop` send a Logout and wait **up to 10 s** for the answer
+(QuickFIX's own wait), so a stop that takes about 11 s is normal when the peer is slow to answer.
+`reset` and the Logout need the session lock, which every `send_to_target` takes too. Threads that
+send in a tight loop without pausing can starve the session's own thread: the 30 s stall the
+go-live chaos tests saw inside `reset` (R-P1-7) is consistent with this. In the reset chaos test
+(go-live phase 25), 30 seeded runs at about 5 000 sends/s per thread went through 375 resets with
+no action over 10 s. With two threads sending flat out, stops ran 10–12 s.
+
+If a stop or a reset hangs longer than 30 s, take thread stacks (`gdb -p PID -batch
+-ex 'thread apply all bt'`) before restarting, and attach them to R-P1-7. One such hang is open:
+`Initiator::stop` waited more than 60 s to join a socket thread that was still reading a live
+connection (go-live phase 25 handover, a C++ fork item).

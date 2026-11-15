@@ -42,6 +42,9 @@ and the fuzz crate's lock fixed and checked on every PR (#35). The P0/P1/P2 coun
 In Phase 4 the byte-level fuzzing is done (build phases 14–16) and the harness port is partly
 done (build phases 11 and 14). Next in this repo is R-P1-7. Everything else still open waits on
 the member spec (R-P0-11), the C++ fork (R-P2-3, R-P2-4), upstream (R-P2-6) or the gateway (Phase 0).
+Later the same day, build phase 25 ran R-P1-7's reset chaos. It explains the reset stall, but it
+found an `Initiator::stop` hang (C++ fork) and a new item, R-P1-9: two containers with one
+session ID segfault. That makes 6 of 9 P1s done.
 
 ## How the work is split
 
@@ -181,6 +184,20 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 - [ ] **R-P1-7 `Session::reset` is a one-sided reset that wipes the store; one 30 s stall inside it is unexplained.**
       Fix: rustdoc warning and an operator runbook (when to use `set_next_*` instead).
       Test: 30 seeded chaos runs with reset on and a watchdog; any stall over 10 s yields stacks; zero unexplained.
+      Status (build phases 10a and 25): the rustdoc and runbook are done, and the test exists
+      (`chaos_with_reset_never_stalls`). Paced sending: 30/30 seeds, 375 resets, 0 stalls. Sending
+      flat out: 10–12 s stalls in `stop`, explained (QuickFIX's 10 s Logout wait plus the senders
+      starving the session lock), and **one unexplained hang**: `Initiator::stop` waited more than
+      60 s to join a socket thread on a live connection. Not reproduced; the C++ fork has a lead
+      (handover 25). Open until that is fixed or ruled out.
+- [ ] **R-P1-9 (new, 15 Nov 2026) Two containers with one session ID segfault in safe Rust.**
+      Building a new `Initiator` before dropping the old one with the same settings: the old
+      one's drop unregisters the shared session ID, and the new one's `Initiator::connect`
+      dereferences a null session. Found by the phase 25 test.
+      Fix: refuse a second live container for a session ID in the binding, or make the C++
+      `removeSession` remove only its own registration (owner to choose).
+      Test: build a second initiator with the same settings, drop the first, start the second:
+      no crash (an error, or both work).
 
 ## Phase 3: build, CI and fork hygiene (alongside sprints 1 and 2)
 
@@ -214,8 +231,9 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 No code; this decides go-live.
 
 - [ ] Port the harness (`qfrs_stress.rs`, `audit-repro`, api probe, fuzz crate) into this repo as tests.
-      Partly done: data-length, panic, re-entry, cross-session and raw-peer modes and the FFI repros
-      as tests (build phase 11), the fuzz crate (phase 14). Still to port: `qfrs_stress.rs` (chaos runs).
+      Done except the ASan/TSan runs: data-length, panic, re-entry, cross-session and raw-peer modes,
+      the FFI repros, and `qfrs_stress.rs` as `test_soak.rs` (build phase 11); the fuzz crate (14);
+      the reset chaos with watchdog (25). (The 15 November note wrongly listed `qfrs_stress.rs` as not ported.)
 - [ ] Rerun the harness with drop and reset on, echo on (after C++ P0-3), panic injection under abort and the
       data-length frames, under ASan and TSan, 50 seeded runs each.
 - [x] Fuzzing with a byte-level entry point and a FIXT/FIX50 mode (the `&str` entry point missed the known over-read).
@@ -223,7 +241,8 @@ No code; this decides go-live.
       R-P0-13 filter removed on the fixed pin (16); nightly `krx_fuzz.yml`.
 - [ ] Multi-hour release-profile soak with latency (only dev-build figures exist: p99 ~114-130 µs loopback).
 - [ ] Dictionary replay of the full UAT capture (R-P0-11 / C++ P0-8).
-- [ ] Root-cause C++ P0-10 (sequence gap) and the `Session::reset` stall (R-P1-7).
+- [ ] Root-cause C++ P0-10 (sequence gap) and the `Session::reset` stall (R-P1-7). The stall is
+      explained (build phase 25); the `Initiator::stop` hang found there is not.
 - [ ] HOSE certification on the final pinned (C++ SHA, quickfix-rs SHA) pair, vendored into the gateway as one unit.
 
 ## Open questions
