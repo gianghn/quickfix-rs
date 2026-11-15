@@ -425,13 +425,23 @@ fn chaos_step(
     Ok(())
 }
 
+/// A free port for the reset chaos run. The exchange is down between each stop and restart, and
+/// on a shared machine another program defaulting to 8000 (or a test using `find_available_port`)
+/// took the port in that gap; the restart then failed with "Address already in use". This range
+/// is outside 8000..9000 and below the macOS and Linux ephemeral ranges.
+fn reset_chaos_port() -> u16 {
+    (21000..22000)
+        .find(|port| std::net::TcpListener::bind(("0.0.0.0", *port)).is_ok())
+        .expect("No port available in 21000..22000")
+}
+
 /// One seeded run; returns (rounds, resets, sends accepted, messages received).
 fn reset_chaos_run(
     seed: u64,
     secs: u64,
     watchdog: &Watchdog,
 ) -> Result<(u64, u64, usize, usize), QuickFixError> {
-    let port = find_available_port();
+    let port = reset_chaos_port();
     let dir = env::temp_dir().join(format!("qfrs-reset-{}-{seed}", std::process::id()));
     fs::remove_dir_all(&dir).ok();
     let settings_client = file_store_settings(ServerType::Sender, port, &dir.join("client"));

@@ -1002,10 +1002,17 @@ under flat-out sending (handover 25). On Linux only one stop passed 10 s, in the
 fix.
 
 **Found on the way:**
-- The first macOS batch with the fix failed at seed 7 with an error returned by one of the test's
-  own calls (reset, logout, logon, start or stop). It was not a hang or the watchdog; my output
-  filter dropped the error line. It did not come back in 4 later macOS batches (seed 7 included)
-  or in 90 Linux seeds.
+- The first macOS batch with the fix failed at seed 7 with an error, not a hang. It was another
+  program on this shared Mac holding the test's port: restarting the exchange failed with
+  `Unable to create, bind, or listen to port 8000 (errno 48: Address already in use)`. Caught again
+  at seed 11 and seed 74 (about 3 in 400 macOS seeds, 0 in 480 Linux seeds on the cluster). Not the
+  engine: after seed 74, 11 new test processes in a row could not bind 8000 at their first start,
+  and a leaked listener dies with its process; a minute later nothing listened on 8000. A probe
+  showed leftover connections (ESTABLISHED, FIN_WAIT_2, TIME_WAIT, CLOSE_WAIT) never block the
+  rebind. The holder was gone before it could be named. The run now takes a port in 21000..22000
+  (outside the 8000..9000 range the other tests use and the ephemeral ranges), and a failed step
+  prints `lsof` for its port. 30 macOS seeds (71–100) then passed on the new port; their 10 s
+  stalls are QuickFIX's own Logout wait (above), not the clash.
 - A macOS batch hung for 30 minutes in the harness itself: the watchdog waited for `lldb`, which
   never returned, so it never reached its 60 s abort. Fixed here (row 26.3).
 - `src/C++/config.h` on the fork's `krx/main` is the CMake-generated copy (committed in its #75).
@@ -1019,6 +1026,6 @@ fix.
 macOS only, noted there, rather than a Linux-only test seam. (3) The submodule points at the fork
 PR's commit; once #73 merges it should point at the merge on `krx/main`.
 
-**Left for the owner:** merge #73, then #37 and this PR. R-P1-7 can then be ticked. The seed 7
-error is not explained; a rerun with the full log would catch it if it comes back. R-P1-9 (two
+**Left for the owner:** merge #73, then #37 and this PR. R-P1-7 can then be ticked. If the
+port error comes back, the `lsof` output names the holder. R-P1-9 (two
 containers with one session ID) still needs its fix choice.
