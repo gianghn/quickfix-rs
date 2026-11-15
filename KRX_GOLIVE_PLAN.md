@@ -37,6 +37,12 @@ was finished by build phases 10, 12 and 13 and R-P2-5 is superseded by the pins,
 6/8 P1 and 4/7 P2 are done. Still open: R-P0-11, R-P1-7 and R-P1-8 (gateway), R-P2-3/4/6,
 Phase 0 (gateway) and Phase 4 (evidence; the C++ fork's Phase 8 long runs are pending).
 
+**Update, 15 November 2026:** `krx/main` at 0.4.2 (`462737c`): phases 22–24 merged (PRs #32–#34)
+and the fuzz crate's lock fixed and checked on every PR (#35). The P0/P1/P2 counts are unchanged.
+In Phase 4 the byte-level fuzzing is done (build phases 14–16) and the harness port is partly
+done (build phases 11 and 14). Next in this repo is R-P1-7. Everything else still open waits on
+the member spec (R-P0-11), the C++ fork (R-P2-3, R-P2-4), upstream (R-P2-6) or the gateway (Phase 0).
+
 ## How the work is split
 
 | Who | What |
@@ -208,9 +214,13 @@ Ends with the first new submodule pin (C++ P0-1/2/3/7/11 fixed) and ASan/TSan CI
 No code; this decides go-live.
 
 - [ ] Port the harness (`qfrs_stress.rs`, `audit-repro`, api probe, fuzz crate) into this repo as tests.
+      Partly done: data-length, panic, re-entry, cross-session and raw-peer modes and the FFI repros
+      as tests (build phase 11), the fuzz crate (phase 14). Still to port: `qfrs_stress.rs` (chaos runs).
 - [ ] Rerun the harness with drop and reset on, echo on (after C++ P0-3), panic injection under abort and the
       data-length frames, under ASan and TSan, 50 seeded runs each.
-- [ ] Fuzzing with a byte-level entry point and a FIXT/FIX50 mode (the `&str` entry point missed the known over-read).
+- [x] Fuzzing with a byte-level entry point and a FIXT/FIX50 mode (the `&str` entry point missed the known over-read).
+      Done: `fuzz/`, four byte targets incl. FIXT1.1+FIX50 (build phase 14), byte parse API (15),
+      R-P0-13 filter removed on the fixed pin (16); nightly `krx_fuzz.yml`.
 - [ ] Multi-hour release-profile soak with latency (only dev-build figures exist: p99 ~114-130 µs loopback).
 - [ ] Dictionary replay of the full UAT capture (R-P0-11 / C++ P0-8).
 - [ ] Root-cause C++ P0-10 (sequence gap) and the `Session::reset` stall (R-P1-7).
