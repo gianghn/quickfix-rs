@@ -45,6 +45,6 @@ go-live chaos tests saw inside `reset` (R-P1-7) is consistent with this. In the 
 no action over 10 s. With two threads sending flat out, stops ran 10–12 s.
 
 If a stop or a reset hangs longer than 30 s, take thread stacks (`gdb -p PID -batch
--ex 'thread apply all bt'`) before restarting, and attach them to R-P1-7. One such hang is open:
-`Initiator::stop` waited more than 60 s to join a socket thread that was still reading a live
-connection (go-live phase 25 handover, a C++ fork item).
+-ex 'thread apply all bt'`) before restarting, and attach them to R-P1-7. The one such hang the
+chaos tests found (`Initiator::stop` joining a connection that opened as the stop began) happened
+only on macOS and is fixed in the C++ fork (go-live phase 26).

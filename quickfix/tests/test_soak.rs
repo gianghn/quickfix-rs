@@ -342,13 +342,41 @@ fn dump_stacks(action: &str, stuck: Duration) {
     } else {
         ("gdb", &["-batch", "-ex", "thread apply all bt", "-p"])
     };
-    match std::process::Command::new(debugger)
+    let mut child = match std::process::Command::new(debugger)
         .args(args)
         .arg(&pid)
-        .output()
+        .stdin(std::process::Stdio::null())
+        .spawn()
     {
-        Ok(out) => eprintln!("{}", String::from_utf8_lossy(&out.stdout)),
-        Err(err) => eprintln!("WATCHDOG: no stacks, {debugger} did not run: {err}"),
+        Ok(child) => child,
+        Err(err) => return eprintln!("WATCHDOG: no stacks, {debugger} did not run: {err}"),
+    };
+    // A debugger that never returns (seen once with lldb) must not keep the watchdog from its abort.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while matches!(child.try_wait(), Ok(None)) {
+        if Instant::now() > deadline {
+            eprintln!("WATCHDOG: {debugger} still attached after 30 s, killed");
+            child.kill().ok();
+            child.wait().ok();
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Every socket on `port` (lsof), to see what still holds it when a restart cannot bind.
+fn print_port_users(port: u16) {
+    let out = std::process::Command::new("lsof")
+        .args(["-nP", "-i"])
+        .arg(format!("TCP:{port}"))
+        .output();
+    match out {
+        Ok(out) => eprintln!(
+            "port {port} (this test is pid {}):\n{}",
+            std::process::id(),
+            String::from_utf8_lossy(&out.stdout)
+        ),
+        Err(err) => eprintln!("lsof did not run: {err}"),
     }
 }
 
@@ -397,13 +425,23 @@ fn chaos_step(
     Ok(())
 }
 
+/// A free port for the reset chaos run. The exchange is down between each stop and restart, and
+/// on a shared machine another program defaulting to 8000 (or a test using `find_available_port`)
+/// took the port in that gap; the restart then failed with "Address already in use". This range
+/// is outside 8000..9000 and below the macOS and Linux ephemeral ranges.
+fn reset_chaos_port() -> u16 {
+    (21000..22000)
+        .find(|port| std::net::TcpListener::bind(("0.0.0.0", *port)).is_ok())
+        .expect("No port available in 21000..22000")
+}
+
 /// One seeded run; returns (rounds, resets, sends accepted, messages received).
 fn reset_chaos_run(
     seed: u64,
     secs: u64,
     watchdog: &Watchdog,
 ) -> Result<(u64, u64, usize, usize), QuickFixError> {
-    let port = find_available_port();
+    let port = reset_chaos_port();
     let dir = env::temp_dir().join(format!("qfrs-reset-{}-{seed}", std::process::id()));
     fs::remove_dir_all(&dir).ok();
     let settings_client = file_store_settings(ServerType::Sender, port, &dir.join("client"));
@@ -446,16 +484,26 @@ fn reset_chaos_run(
         let action = usize::try_from(pick).unwrap_or(RESET);
         resets += u64::from(action == RESET);
         let name = CHAOS_ACTIONS[action];
+        let failed = |err: &QuickFixError| {
+            eprintln!("seed {seed}, round {rounds}: '{name}' failed: {err}");
+            print_port_users(port);
+        };
         match action {
             3 => {
                 watchdog.run(name, || drop(initiator));
-                initiator = watchdog.run(name, || started(new_initiator()?))?;
+                initiator = watchdog
+                    .run(name, || started(new_initiator()?))
+                    .inspect_err(failed)?;
             }
             4 => {
                 watchdog.run(name, || drop(acceptor));
-                acceptor = watchdog.run(name, || started(new_acceptor()?))?;
+                acceptor = watchdog
+                    .run(name, || started(new_acceptor()?))
+                    .inspect_err(failed)?;
             }
-            _ => watchdog.run(name, || chaos_step(action, &mut acceptor, &mut initiator))?,
+            _ => watchdog
+                .run(name, || chaos_step(action, &mut acceptor, &mut initiator))
+                .inspect_err(failed)?,
         }
         rounds += 1;
     }
@@ -466,7 +514,9 @@ fn reset_chaos_run(
             .map(|h| h.join().expect("sender thread").len())
             .sum()
     });
-    watchdog.run("final stop", || initiator.stop().and(acceptor.stop()))?;
+    watchdog
+        .run("final stop", || initiator.stop().and(acceptor.stop()))
+        .inspect_err(|err| eprintln!("seed {seed}: 'final stop' failed: {err}"))?;
     watchdog.run("final drop", || drop((initiator, acceptor)));
     fs::remove_dir_all(&dir).ok();
     Ok((rounds, resets, accepted, server.count()))
