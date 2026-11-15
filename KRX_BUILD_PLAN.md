@@ -970,7 +970,7 @@ its own registration? Linux and sanitizer runs of this test are not done (Phase 
 
 ### Handover 26 — 2026-11-15
 **Built:** the fix for the hang phase 25 found, in the C++ fork (gianghn/quickfix#73, commit
-`e351be1b`), and the submodule moved to it. Two lines in `ThreadedSocketInitiator::socketThread`:
+`e351be1b`, merged as `82177bd5`), and the submodule moved to that merge. Two lines in `ThreadedSocketInitiator::socketThread`:
 it does not connect once the initiator is stopped, and its read loop ends when the initiator is
 stopped (`read()` wakes at least once a second, `m_stop` is atomic and set before `onStop`). Also
 `dump_stacks` in `test_soak.rs` now kills a debugger still attached after 30 s.
@@ -1023,9 +1023,10 @@ fix.
 `run.sh` only runs `krx_stress`); they expire after 7 days.
 
 **Decisions taken:** (1) keep the fix although Linux is not affected. (2) Fork row 6.7's red is
-macOS only, noted there, rather than a Linux-only test seam. (3) The submodule points at the fork
-PR's commit; once #73 merges it should point at the merge on `krx/main`.
+macOS only, noted there, rather than a Linux-only test seam. (3) Fork row 6.7 runs 3 rounds, not
+10: 10 pushed `krx_ut` past the 60 s limit of the fork's `mutation (ut)` check (round 0 is the one
+that hung, so it is still red 3 of 3 on macOS).
 
-**Left for the owner:** merge #73, then #37 and this PR. R-P1-7 can then be ticked. If the
+**Left for the owner:** nothing for R-P1-7 (#73, #37 and this PR merged). If the
 port error comes back, the `lsof` output names the holder. R-P1-9 (two
 containers with one session ID) still needs its fix choice.
