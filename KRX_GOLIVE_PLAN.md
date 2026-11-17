@@ -48,6 +48,9 @@ session ID segfault. That makes 6 of 9 P1s done. Build phase 26 then fixed the h
 fork (gianghn/quickfix#73) and found it was macOS only: Linux, where the gateway runs, was never
 exposed. With that merged, R-P1-7 is done: 7 of 9 P1s.
 
+**Update, 18 November 2026:** 0.4.3 released: phases 25–26, with the C++ fork pinned at
+`82177bd5` (R-P1-7). The gateway can take it by version.
+
 ## How the work is split
 
 | Who | What |
