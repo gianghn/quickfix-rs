@@ -256,8 +256,8 @@ loss (3, 4) before the API redesigns (5, 7, 8) that the gateway must adapt to.
 | 22 | `krx/golive-p22` | PR #32, merged; version 0.4.2 | header read + write 38.5 ns on `krx/main` (0.2.2: 34.0) → 36.1 ns; guards 22.1–22.4 green before and after; gateway `pca_marker_to_board_id` +12.5–16.1 % → −3.4 % vs its 0.2.2 baseline |
 | 23 | `krx/golive-p23` | PR #33, merged; version 0.4.2 | refactor: 23.1 5/5 and 23.2 4/4 green before and after; C++ findings 38 → 8 false positives; row 22.5 36.8 ns (phase 22: 37.0, `krx/main` 39.0) |
 | 24 | `krx/golive-p24` | PR #34, merged; version 0.4.2 | `cpp-policy-check quickfix-ffi`: config, tidy, build fail → all 7 stages pass; cargo 206/0/3 |
-| 25 | `krx/golive-p25` | PR #37 | evidence: paced 30/30 seeds, 375 resets, 0 stalls; flooding: stalls of 10–12 s in stops, then a hang of over 60 s in `Initiator::stop` at seed 10 (not reproduced in 3 replays). Found on the way: two initiators sharing a session ID segfault |
-| 26 | `krx/golive-p26` | PR #38, after fork PR gianghn/quickfix#73 | fork row 6.7: macOS red 3/3 → green; Linux green before and after (the hang is macOS only). Flat-out chaos with the fix: macOS 90/90 seeds over 3 full batches, Linux 90/90, no hang |
+| 25 | `krx/golive-p25` | PR #37, merged; version 0.4.3 | evidence: paced 30/30 seeds, 375 resets, 0 stalls; flooding: stalls of 10–12 s in stops, then a hang of over 60 s in `Initiator::stop` at seed 10 (not reproduced in 3 replays). Found on the way: two initiators sharing a session ID segfault |
+| 26 | `krx/golive-p26` | PR #38, after fork PR gianghn/quickfix#73, merged; version 0.4.3 | fork row 6.7: macOS red 3/3 → green; Linux green before and after (the hang is macOS only). Flat-out chaos with the fix: macOS 90/90 seeds over 3 full batches, Linux 90/90, no hang |
 
 ## 6. Handover notes
 

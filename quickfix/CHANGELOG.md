@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 (KRX fork, krx/main, not published to crates.io)
+
+### Fixed
+
+- `libquickfix` pinned at the C++ fork's `krx/main` @ `82177bd5` (R-P1-7, C++ #73; go-live
+  phases 25–26): a stopped `ThreadedSocketInitiator` never keeps a connection that arrived late
+  reading, so `Initiator::stop` no longer hangs. No API change, so a patch bump.
+
 ## 0.4.2 (KRX fork, krx/main, not published to crates.io)
 
 ### Changed
