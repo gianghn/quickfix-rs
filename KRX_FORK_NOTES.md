@@ -15,8 +15,8 @@ Keep this file up to date when a patch is added, sent upstream or dropped.
 
 `krx/main` was started at upstream `cc2b7a5` (release 0.2.2, 2026-10). The submodule
 `quickfix-ffi/libquickfix` points at our QuickFIX fork `gianghn/quickfix`, branch `krx/main`
-(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `fc866418` since go-live phase 21a
-(`e1b1559e` in phase 19, `11703b2a` in phase 16, `33b12daf` before). Upstream pins QuickFIX
+(see `KRX_FORK_NOTES.md` there for the C++ fixes), pinned at `36f13f12` (C++ #75, B6) since 0.4.4 (`82177bd5` in 0.4.3, `fc866418` in phase 21a,
+`e1b1559e` in phase 19, `11703b2a` in phase 16, `33b12daf` before). Upstream pins QuickFIX
 master `386ce46e`; on a sync, ours wins.
 
 ## Our patches on upstream 0.2.2
@@ -72,6 +72,7 @@ Go-live fixes on `krx/main` (`KRX_BUILD_PLAN.md`; each in `quickfix/CHANGELOG.md
 | 21b | `send_batch_to_target`: a batch under one session lock and one store sync (C++ 15.7) | none (additive); only worth it with `FileStoreSync=Y`: one sender thread per session drains the order queue into one call (at most 64), never waiting to fill a batch; orders from the returned count on were not sent |
 | 22 | A successful binding call no longer clears the error text (only a set one is cleared); R-P1-2's behaviour unchanged | none (faster): about 1.5 ns less per FFI call, e.g. a header `get_field` + `set_field` 39.5 → 36.6 ns on Linux |
 | 23 | The binding's C++ cleaned up for the C++ policy: the catch chain in three helpers, error state behind accessors, no naked `new` | none: same error codes, same speed |
+| B6 (0.4.4) | `libquickfix` pinned at `36f13f12` (C++ #75): session setting `SocketAcceptHost` binds the acceptor to one numeric IPv4 address (empty or absent: every interface, as before); typed item `dictionary_item::SocketAcceptHost`; first cucumber-rs suite (`tests/features/acceptor_bind.feature`) | none until a `.cfg` sets it (gateway review B6). Then `start()` fails with `ConfigError` ("Configuration failed: SocketAcceptHost must be a numeric IPv4 address: \"x\"", or "… SocketAcceptPort P has two SocketAcceptHost values: \"a\" and \"b\"") or, for an address not on the host, `RuntimeError` ("Unable to create, bind, or listen to port P on HOST (…)"). Every session on one port must name the same host |
 
 Removed with the rebase: the `experimental-multi-thread-support` feature. Upstream builds
 `MultiThreaded` always. The gateway enables that feature in its `Cargo.toml`, so its manifest has to

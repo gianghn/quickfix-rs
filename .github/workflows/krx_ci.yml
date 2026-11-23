@@ -37,6 +37,11 @@ jobs:
       # MultiThreaded is no longer behind a feature, so the default build tests both kinds.
       - name: Tests
         run: cargo test --workspace --locked
+      # cucumber-rs scenarios (tests/features); also part of the run above, here by name. The
+      # "another address" scenario needs a second local IPv4 address: 127.0.0.2 on Linux, the
+      # runner's own address on macOS.
+      - name: BDD scenarios
+        run: cargo test -p quickfix --test acceptor_bind --locked
 
   # Clippy's toolchain is pinned: a new Rust release brings new lints, which must not turn CI red
   # on code nobody changed. Bump it on purpose.

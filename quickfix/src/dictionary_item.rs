@@ -86,6 +86,13 @@ impl DictionaryItem for ConnectionType {
 pub struct SocketAcceptPort(pub u16);
 impl_dictionary_item!(SocketAcceptPort as i32);
 
+/// Acceptor address to listen on: a numeric IPv4 address (KRX fork). Absent or empty, the
+/// acceptor listens on every interface; anything else makes `start()` fail with
+/// [`crate::QuickFixError::ConfigError`], as do two different hosts on one acceptor port.
+#[derive(Debug)]
+pub struct SocketAcceptHost<'a>(pub &'a str);
+impl_dictionary_item!(SocketAcceptHost as String);
+
 /// Initiator port to connect to.
 #[derive(Debug)]
 pub struct SocketConnectPort(pub u16);
