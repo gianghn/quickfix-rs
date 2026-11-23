@@ -103,6 +103,9 @@ fn main() {
     }
     futures::executor::block_on(
         BindWorld::cucumber()
+            // No command line: `cargo test --workspace -- --exact --skip …` (scripts/san.sh)
+            // passes libtest's arguments to every test binary, and cucumber's parser refuses them.
+            .with_cli(cucumber::cli::Opts::<_, _, _, cucumber::cli::Empty>::default())
             .max_concurrent_scenarios(1)
             .fail_on_skipped()
             .filter_run_and_exit("tests/features", move |_, _, scenario| {
