@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.4 (KRX fork, krx/main, not published to crates.io)
+
+### Added
+
+- `libquickfix` pinned at the C++ fork's `krx/socket-accept-host` @ `36f13f12` (C++ #75; gateway
+  review B6): new session setting `SocketAcceptHost` binds an acceptor's listening socket to one
+  numeric IPv4 address instead of every interface. Absent or empty, nothing changes. A value
+  that is not a numeric IPv4 address (a host name, an IPv6 address), or two different values on
+  one `SocketAcceptPort`, makes `start()` fail with `QuickFixError::ConfigError`; an address that
+  is not on this host fails it with `QuickFixError::RuntimeError` ("Unable to create, bind, or
+  listen to port P on HOST (…)"). Typed item: `dictionary_item::SocketAcceptHost`.
+- The first cucumber-rs suite, `tests/features/acceptor_bind.feature` (`cargo test -p quickfix
+  --test acceptor_bind`); `cucumber` and `futures` are dev-dependencies only.
+
 ## 0.4.3 (KRX fork, krx/main, not published to crates.io)
 
 ### Fixed

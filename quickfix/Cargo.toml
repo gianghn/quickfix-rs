@@ -1,6 +1,6 @@
 [package]
 name = "quickfix"
-version = "0.4.3"
+version = "0.4.4"
 authors = ["Arthur LE MOIGNE"]
 edition = "2021"
 description = "High level binding to quickfix C++ library"
@@ -11,7 +11,7 @@ categories = ["api-bindings", "finance"]
 rust-version = "1.86.0"
 
 [dependencies]
-quickfix-ffi = { path = "../quickfix-ffi", version = "0.4.3" }
+quickfix-ffi = { path = "../quickfix-ffi", version = "0.4.4" }
 thiserror = "2.0.11"
 log = { version = "0.4.22", optional = true }
 
@@ -21,3 +21,13 @@ build-with-ssl = ["quickfix-ffi/build-with-ssl"]
 build-with-mysql = ["quickfix-ffi/build-with-mysql"]
 build-with-postgres = ["quickfix-ffi/build-with-postgres"]
 log = ["dep:log"]
+
+[dev-dependencies]
+# The gateway's version (krx_gateway_rust Cargo.toml); `futures` runs it without an async runtime.
+cucumber = "0.21.1"
+futures = "0.3"
+
+# Scenarios of tests/features (cucumber-rs).
+[[test]]
+name = "acceptor_bind"
+harness = false
