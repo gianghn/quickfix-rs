@@ -2,8 +2,9 @@
 //! by `test_acceptor_bind.rs` and the `acceptor_bind` cucumber suite.
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
-use std::sync::Mutex;
-use std::thread;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use quickfix::{dictionary_item::*, *};
@@ -12,36 +13,86 @@ use quickfix::{dictionary_item::*, *};
 pub static ENGINE_LOCK: Mutex<()> = Mutex::new(());
 
 /// The application of every engine here: it does nothing.
-#[derive(Debug)]
-pub struct Quiet;
+struct Quiet;
 impl ApplicationCallback for Quiet {}
 
 static QUIET: Quiet = Quiet;
 static NO_LOG: NullLogger = NullLogger;
 
-/// What an engine borrows for its whole life; leaked, so the engine can live in a test's state.
-struct Parts {
-    application: Application<'static, Quiet>,
-    store: MemoryMessageStoreFactory,
-    log: LogFactory<'static, NullLogger>,
+/// Builds an engine from plain data `D` and the parts it borrows.
+type Build<D> = for<'a> fn(
+    &D,
+    &'a Application<'static, Quiet>,
+    &'a MemoryMessageStoreFactory,
+    &'a LogFactory<'static, NullLogger>,
+) -> Result<Box<dyn ConnectionHandler + 'a>, QuickFixError>;
+
+/// An engine (acceptor or initiator) on its own thread, which owns everything the engine borrows
+/// (no leak, and QuickFIX's handles need not be `Send`). Dropping it stops the engine.
+#[derive(Debug)]
+pub struct Engine {
+    stop: Option<mpsc::Sender<()>>,
+    logged_on: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
 
-fn leaked_parts() -> Result<&'static Parts, QuickFixError> {
-    Ok(Box::leak(Box::new(Parts {
-        application: Application::try_new(&QUIET)?,
-        store: MemoryMessageStoreFactory::new(),
-        log: LogFactory::try_new(&NO_LOG)?,
-    })))
+impl Engine {
+    /// Whether the engine has a session logged on.
+    pub fn is_logged_on(&self) -> bool {
+        self.logged_on.load(Ordering::SeqCst)
+    }
+
+    /// Builds and starts the engine on a new thread; returns once `start()` returned.
+    fn spawn<D: Send + 'static>(data: D, build: Build<D>) -> Result<Self, QuickFixError> {
+        let (started_tx, started_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = mpsc::channel::<()>();
+        let logged_on = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&logged_on);
+        let thread = thread::spawn(move || {
+            let result = run(&data, build, &started_tx, &stop_rx, &flag);
+            if let Err(error) = result {
+                let _ = started_tx.send(Err(error));
+            }
+        });
+        let engine = Self {
+            stop: Some(stop_tx),
+            logged_on,
+            thread: Some(thread),
+        };
+        let started = started_rx
+            .recv()
+            .unwrap_or_else(|_| Err(QuickFixError::InvalidArgument("engine thread ended".into())));
+        started.map(|()| engine)
+    }
 }
 
-/// The gateway side: a threaded acceptor, the kind the gateway runs.
-pub type Gateway = Acceptor<'static, Quiet, NullLogger, MemoryMessageStoreFactory>;
-/// The broker side: a threaded initiator.
-pub type Broker = Initiator<'static, Quiet, NullLogger, MemoryMessageStoreFactory>;
+impl Drop for Engine {
+    fn drop(&mut self) {
+        drop(self.stop.take());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
 
-/// The gateway's session for the broker `target`.
-pub fn gateway_session(target: &str) -> SessionId {
-    SessionId::try_new("FIX.4.4", "GATEWAY", target, "").expect("valid session ID")
+/// The engine thread: build, start, report, keep `logged_on` current until told to stop.
+fn run<D>(
+    data: &D,
+    build: Build<D>,
+    started: &mpsc::Sender<Result<(), QuickFixError>>,
+    stop: &mpsc::Receiver<()>,
+    logged_on: &AtomicBool,
+) -> Result<(), QuickFixError> {
+    let application = Application::try_new(&QUIET)?;
+    let store = MemoryMessageStoreFactory::new();
+    let log = LogFactory::try_new(&NO_LOG)?;
+    let mut engine = build(data, &application, &store, &log)?;
+    engine.start()?;
+    let _ = started.send(Ok(()));
+    while let Err(mpsc::RecvTimeoutError::Timeout) = stop.recv_timeout(Duration::from_millis(20)) {
+        logged_on.store(engine.is_logged_on().unwrap_or(false), Ordering::SeqCst);
+    }
+    engine.stop()
 }
 
 /// A port nothing listens on now.
@@ -63,55 +114,69 @@ fn session_items(port: u16) -> Result<Dictionary, QuickFixError> {
     ])
 }
 
-/// A gateway with one session per `(broker, host)` on `port`, each bound to its host.
+/// Starts a gateway (a threaded acceptor, the kind the gateway runs) with one session per
+/// `(broker, host)` on `port`, each bound to its host.
 ///
 /// # Errors
 ///
-/// Whatever QuickFIX refuses while building the acceptor.
-pub fn gateway(port: u16, sessions: &[(&str, &str)]) -> Result<Gateway, QuickFixError> {
-    let mut settings = SessionSettings::new();
-    settings.set(
-        None,
-        Dictionary::try_from_items(&[&ConnectionType::Acceptor])?,
-    )?;
-    for (broker, host) in sessions {
-        let mut items = session_items(port)?;
-        SocketAcceptHost(host).apply_param(&mut items)?;
-        settings.set(Some(&gateway_session(broker)), items)?;
-    }
-    let parts = leaked_parts()?;
-    Acceptor::try_new(
-        &settings,
-        &parts.application,
-        &parts.store,
-        &parts.log,
-        FixSocketServerKind::MultiThreaded,
+/// What QuickFIX refuses while building or starting the acceptor.
+pub fn start_gateway(port: u16, sessions: &[(&str, &str)]) -> Result<Engine, QuickFixError> {
+    let sessions: Vec<(String, String)> = sessions
+        .iter()
+        .map(|(broker, host)| ((*broker).to_owned(), (*host).to_owned()))
+        .collect();
+    Engine::spawn(
+        (port, sessions),
+        |(port, sessions), application, store, log| {
+            let mut settings = SessionSettings::new();
+            settings.set(
+                None,
+                Dictionary::try_from_items(&[&ConnectionType::Acceptor])?,
+            )?;
+            for (broker, host) in sessions {
+                let mut items = session_items(*port)?;
+                SocketAcceptHost(host).apply_param(&mut items)?;
+                let session = SessionId::try_new("FIX.4.4", "GATEWAY", broker, "")?;
+                settings.set(Some(&session), items)?;
+            }
+            let acceptor = Acceptor::try_new(
+                &settings,
+                application,
+                store,
+                log,
+                FixSocketServerKind::MultiThreaded,
+            )?;
+            Ok(Box::new(acceptor))
+        },
     )
 }
 
-/// The broker `name`, connecting to `address:port`.
+/// Starts the broker `name` (a threaded initiator), connecting to `address:port`.
 ///
 /// # Errors
 ///
-/// Whatever QuickFIX refuses while building the initiator.
-pub fn broker(name: &str, address: &str, port: u16) -> Result<Broker, QuickFixError> {
-    let mut settings = SessionSettings::new();
-    settings.set(
-        None,
-        Dictionary::try_from_items(&[&ConnectionType::Initiator, &ReconnectInterval(1)])?,
-    )?;
-    let mut items = session_items(port)?;
-    SocketConnectHost(address).apply_param(&mut items)?;
-    let session = SessionId::try_new("FIX.4.4", name, "GATEWAY", "")?;
-    settings.set(Some(&session), items)?;
-    let parts = leaked_parts()?;
-    Initiator::try_new(
-        &settings,
-        &parts.application,
-        &parts.store,
-        &parts.log,
-        FixSocketServerKind::MultiThreaded,
-    )
+/// What QuickFIX refuses while building or starting the initiator.
+pub fn start_broker(name: &str, address: &str, port: u16) -> Result<Engine, QuickFixError> {
+    let data = (name.to_owned(), address.to_owned(), port);
+    Engine::spawn(data, |(name, address, port), application, store, log| {
+        let mut settings = SessionSettings::new();
+        settings.set(
+            None,
+            Dictionary::try_from_items(&[&ConnectionType::Initiator, &ReconnectInterval(1)])?,
+        )?;
+        let mut items = session_items(*port)?;
+        SocketConnectHost(address).apply_param(&mut items)?;
+        let session = SessionId::try_new("FIX.4.4", name, "GATEWAY", "")?;
+        settings.set(Some(&session), items)?;
+        let initiator = Initiator::try_new(
+            &settings,
+            application,
+            store,
+            log,
+            FixSocketServerKind::MultiThreaded,
+        )?;
+        Ok(Box::new(initiator))
+    })
 }
 
 /// Polls `done` every 20 ms until it holds or `timeout` passes; returns its last answer.

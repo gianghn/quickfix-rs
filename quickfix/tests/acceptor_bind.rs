@@ -16,43 +16,33 @@ const BROKER: &str = "BROKER";
 /// elsewhere (macOS answers only 127.0.0.1 unless aliased).
 const NEEDS_SECOND_ADDRESS: &str = "Connection through another address never reaches the session";
 
+/// Fields drop in order: the broker stops before the gateway.
 #[derive(Debug, Default, World)]
 struct BindWorld {
     port: u16,
-    gateway: Option<Gateway>,
-    broker: Option<Broker>,
+    host: String,
+    broker: Option<Engine>,
+    gateway: Option<Engine>,
     connected: Option<bool>,
     start_error: Option<QuickFixError>,
 }
 
-impl BindWorld {
-    fn gateway_listening_on(&mut self, host: &str) {
-        self.port = free_port();
-        self.gateway = Some(gateway(self.port, &[(BROKER, host)]).expect("gateway"));
-    }
-
-    fn started_gateway(&mut self) -> &mut Gateway {
-        let gateway = self.gateway.as_mut().expect("a gateway");
-        gateway.start().expect("gateway starts");
-        gateway
-    }
-}
-
 #[given("a broker port that listens only on the loopback address")]
 fn port_on_loopback(world: &mut BindWorld) {
-    world.gateway_listening_on("127.0.0.1");
-    world.started_gateway();
+    world.port = free_port();
+    let gateway = start_gateway(world.port, &[(BROKER, "127.0.0.1")]).expect("gateway starts");
+    world.gateway = Some(gateway);
 }
 
 #[given("a broker port whose listening address is a host name")]
 fn port_on_host_name(world: &mut BindWorld) {
-    world.gateway_listening_on("localhost");
+    world.port = free_port();
+    world.host = "localhost".to_owned();
 }
 
 #[when("the broker connects through the loopback address")]
 fn broker_connects(world: &mut BindWorld) {
-    let mut broker = broker(BROKER, "127.0.0.1", world.port).expect("broker");
-    broker.start().expect("broker starts");
+    let broker = start_broker(BROKER, "127.0.0.1", world.port).expect("broker starts");
     world.broker = Some(broker);
 }
 
@@ -64,16 +54,16 @@ fn connects_through_other(world: &mut BindWorld) {
 
 #[when("the engine starts")]
 fn engine_starts(world: &mut BindWorld) {
-    let gateway = world.gateway.as_mut().expect("a gateway");
-    world.start_error = gateway.start().err();
+    match start_gateway(world.port, &[(BROKER, &world.host)]) {
+        Ok(gateway) => world.gateway = Some(gateway),
+        Err(error) => world.start_error = Some(error),
+    }
 }
 
 #[then("the broker's session is logged on")]
 fn session_logged_on(world: &mut BindWorld) {
     let gateway = world.gateway.as_ref().expect("a gateway");
-    assert!(wait_until(LOGON_WAIT, || gateway
-        .is_logged_on()
-        .unwrap_or(false)));
+    assert!(wait_until(LOGON_WAIT, || gateway.is_logged_on()));
 }
 
 #[then("the connection is refused")]
