@@ -63,6 +63,31 @@ fn acceptor_start_returns_config_error_when_host_is_not_numeric_ipv4() {
     }
 }
 
+/// `AllowedRemoteAddresses` (B6 follow-up): a list that is empty or holds anything but numeric
+/// IPv4 addresses never starts, rather than letting any address in.
+#[test]
+fn acceptor_start_returns_config_error_when_allowed_addresses_are_not_ipv4() {
+    let _lock = ENGINE_LOCK.lock().expect("ENGINE_LOCK poisoned");
+    for allowed in [
+        "",
+        " ",
+        "localhost",
+        "127.0.0.1;10.0.0.1",
+        "127.0.0.1,,10.0.0.1",
+        "::1",
+    ] {
+        match start_gateway_allowing(free_port(), "BROKER", allowed) {
+            Err(QuickFixError::ConfigError(text)) => {
+                assert!(
+                    text.contains("AllowedRemoteAddresses"),
+                    "{allowed:?}: {text}"
+                );
+            }
+            other => panic!("{allowed:?}: want ConfigError, got {other:?}"),
+        }
+    }
+}
+
 #[test]
 fn acceptor_start_returns_config_error_when_one_port_has_two_hosts() {
     let _lock = ENGINE_LOCK.lock().expect("ENGINE_LOCK poisoned");

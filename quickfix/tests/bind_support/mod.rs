@@ -1,5 +1,6 @@
-//! An acceptor bound to one address with `SocketAcceptHost` (KRX fork; gateway review B6), shared
-//! by `test_acceptor_bind.rs` and the `acceptor_bind` cucumber suite.
+//! An acceptor bound to one address with `SocketAcceptHost` (KRX fork; gateway review B6), or
+//! whose session lists the addresses it may log on from (`AllowedRemoteAddresses`), shared by the
+//! `acceptor_bind` and `allowed_addresses` cucumber suites.
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -121,10 +122,34 @@ fn session_items(port: u16) -> Result<Dictionary, QuickFixError> {
 ///
 /// What QuickFIX refuses while building or starting the acceptor.
 pub fn start_gateway(port: u16, sessions: &[(&str, &str)]) -> Result<Engine, QuickFixError> {
-    let sessions: Vec<(String, String)> = sessions
+    let sessions = sessions
         .iter()
-        .map(|(broker, host)| ((*broker).to_owned(), (*host).to_owned()))
+        .map(|(broker, host)| ((*broker).to_owned(), Some((*host).to_owned()), None))
         .collect();
+    gateway(port, sessions)
+}
+
+/// Starts a gateway with one session for `broker` on `port`, which may log on only from the
+/// addresses in `allowed` (`AllowedRemoteAddresses`; gateway review B6 follow-up).
+///
+/// # Errors
+///
+/// What QuickFIX refuses while building or starting the acceptor.
+pub fn start_gateway_allowing(
+    port: u16,
+    broker: &str,
+    allowed: &str,
+) -> Result<Engine, QuickFixError> {
+    gateway(
+        port,
+        vec![(broker.to_owned(), None, Some(allowed.to_owned()))],
+    )
+}
+
+/// A gateway session: its broker, `SocketAcceptHost` and `AllowedRemoteAddresses`, when set.
+type GatewaySession = (String, Option<String>, Option<String>);
+
+fn gateway(port: u16, sessions: Vec<GatewaySession>) -> Result<Engine, QuickFixError> {
     Engine::spawn(
         (port, sessions),
         |(port, sessions), application, store, log| {
@@ -133,9 +158,14 @@ pub fn start_gateway(port: u16, sessions: &[(&str, &str)]) -> Result<Engine, Qui
                 None,
                 Dictionary::try_from_items(&[&ConnectionType::Acceptor])?,
             )?;
-            for (broker, host) in sessions {
+            for (broker, host, allowed) in sessions {
                 let mut items = session_items(*port)?;
-                SocketAcceptHost(host).apply_param(&mut items)?;
+                if let Some(host) = host {
+                    SocketAcceptHost(host).apply_param(&mut items)?;
+                }
+                if let Some(allowed) = allowed {
+                    AllowedRemoteAddresses(allowed).apply_param(&mut items)?;
+                }
                 let session = SessionId::try_new("FIX.4.4", "GATEWAY", broker, "")?;
                 settings.set(Some(&session), items)?;
             }
