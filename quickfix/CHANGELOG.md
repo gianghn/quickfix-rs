@@ -4,7 +4,7 @@
 
 ### Added
 
-- `libquickfix` pinned at the C++ fork's `krx/allowed-remote-addresses` @ `5db79f5f` (C++ #76;
+- `libquickfix` pinned at the C++ fork's `krx/allowed-remote-addresses` @ `d2d435ee` (C++ #76;
   gateway review B6 follow-up): new session setting `AllowedRemoteAddresses`, a comma-separated
   list of numeric IPv4 addresses the session may log on from. Absent, nothing changes. A
   connection from another address is dropped before the session sees its first message, and the
