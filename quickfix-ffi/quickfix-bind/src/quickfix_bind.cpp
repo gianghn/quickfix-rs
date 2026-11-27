@@ -1221,6 +1221,14 @@ int8_t FixSession_logout(FixSession_t *session) {
   });
 }
 
+int8_t FixSession_disconnect(FixSession_t *session) {
+  RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
+  CATCH_OR_RETURN_ERRNO({
+    session->disconnect();
+    return 0;
+  });
+}
+
 int8_t FixSession_isLoggedOn(FixSession_t *session) {
   RETURN_VAL_IF_NULL(session, ERRNO_INVAL);
   CATCH_OR_RETURN_ERRNO({ return session->isLoggedOn(); });
