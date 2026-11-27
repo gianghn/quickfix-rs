@@ -93,6 +93,15 @@ impl_dictionary_item!(SocketAcceptPort as i32);
 pub struct SocketAcceptHost<'a>(pub &'a str);
 impl_dictionary_item!(SocketAcceptHost as String);
 
+/// Addresses an acceptor session may log on from: comma-separated numeric IPv4 addresses (KRX
+/// fork). Absent, any address. A connection from another address is dropped before the session
+/// sees its first message, and `Connection refused: <address> is not in AllowedRemoteAddresses`
+/// is logged as a session event. Empty, or an entry that is not a numeric IPv4 address, makes
+/// building the acceptor fail with [`crate::QuickFixError::ConfigError`].
+#[derive(Debug)]
+pub struct AllowedRemoteAddresses<'a>(pub &'a str);
+impl_dictionary_item!(AllowedRemoteAddresses as String);
+
 /// Initiator port to connect to.
 #[derive(Debug)]
 pub struct SocketConnectPort(pub u16);

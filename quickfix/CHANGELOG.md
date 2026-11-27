@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.5 (KRX fork, krx/main, not published to crates.io)
+
+### Added
+
+- `libquickfix` pinned at the C++ fork's `krx/allowed-remote-addresses` @ `d2d435ee` (C++ #76;
+  gateway review B6 follow-up): new session setting `AllowedRemoteAddresses`, a comma-separated
+  list of numeric IPv4 addresses the session may log on from. Absent, nothing changes. A
+  connection from another address is dropped before the session sees its first message, and the
+  session's log gets the event `Connection refused: <address> is not in AllowedRemoteAddresses`.
+  An empty list, or an entry that is not a numeric IPv4 address, makes building the acceptor fail
+  with `QuickFixError::ConfigError`. Typed item: `dictionary_item::AllowedRemoteAddresses`.
+- Scenarios `tests/features/allowed_addresses.feature`, run by the `acceptor_bind` binary.
+
+### Fixed
+
+- An acceptor whose settings fail while it is built (`Acceptor::try_new` returning
+  `ConfigError`) no longer leaks the C++ engine's log and the sessions already created, which
+  also stayed registered under their `SessionId` (C++ #76).
+
 ## 0.4.4 (KRX fork, krx/main, not published to crates.io)
 
 ### Added
