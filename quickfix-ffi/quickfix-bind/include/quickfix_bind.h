@@ -232,6 +232,7 @@ int8_t FixSession_sendToTarget(FixMessage_t *msg, const FixSessionID_t *session_
 int64_t FixSession_sendToTargetBatch(FixMessage_t *const *msgs, size_t len, const FixSessionID_t *session_id);
 FixSession_t *FixSession_lookup(const FixSessionID_t *session_id);
 int8_t FixSession_logout(FixSession_t *session);
+int8_t FixSession_disconnect(FixSession_t *session);
 int8_t FixSession_isLoggedOn(FixSession_t *session);
 int8_t FixSession_send(FixSession_t *session, FixMessage_t *msg);
 int8_t FixSession_isEnabled(FixSession_t *session);

@@ -6,8 +6,8 @@ use std::{
 };
 
 use quickfix_ffi::{
-    FixSession_isEnabled, FixSession_isLoggedOn, FixSession_logon, FixSession_logout,
-    FixSession_lookup, FixSession_refresh, FixSession_reset, FixSession_send,
+    FixSession_disconnect, FixSession_isEnabled, FixSession_isLoggedOn, FixSession_logon,
+    FixSession_logout, FixSession_lookup, FixSession_refresh, FixSession_reset, FixSession_send,
     FixSession_sendToTarget, FixSession_sendToTargetBatch, FixSession_setNextSenderMsgSeqNum,
     FixSession_setNextTargetMsgSeqNum, FixSession_t,
 };
@@ -147,6 +147,13 @@ impl Session<'_> {
     /// Force session logout, and disable session.
     pub fn logout(&mut self) -> Result<(), QuickFixError> {
         ffi_code_to_result(unsafe { FixSession_logout(self.inner) })
+    }
+
+    /// Drop the session's connection without a Logout; the session stays enabled, so the peer may
+    /// log on again at once, and what is sent meanwhile is stored for its resend (KRX fork: the
+    /// gateway cuts off a broker that has fallen a whole queue behind).
+    pub fn disconnect(&mut self) -> Result<(), QuickFixError> {
+        ffi_code_to_result(unsafe { FixSession_disconnect(self.inner) })
     }
 
     /// Check if session is logged on.
